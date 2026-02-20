@@ -246,6 +246,24 @@ header h1 {
     width: 0%;
 }
 
+.cancel-btn {
+    background-color: transparent;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-secondary);
+    padding: 6px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    margin-top: 8px;
+}
+
+.cancel-btn:hover {
+    border-color: #e57373;
+    color: #e57373;
+    background-color: rgba(229, 115, 115, 0.1);
+}
+
 /* View Toggle */
 .view-toggle {
     display: flex;

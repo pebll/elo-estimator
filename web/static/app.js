@@ -6,6 +6,8 @@ let currentView = "list";
 let eloChart = null;
 let hasMoreGames = true;
 let oldestGameTime = null;
+let pendingJobIds = [];
+let batchCancelled = false;
 
 // DOM Elements
 const usernameInput = document.getElementById("username-input");
@@ -30,11 +32,13 @@ const progressFill = document.getElementById("progress-fill");
 const loadMoreBtn = document.getElementById("load-more-btn");
 const queueIndicator = document.getElementById("queue-indicator");
 const queueCount = document.getElementById("queue-count");
+const batchCancelBtn = document.getElementById("batch-cancel-btn");
 
 // Event Listeners
 searchBtn.addEventListener("click", searchGames);
 batchAnalyzeBtn.addEventListener("click", batchAnalyze);
 loadMoreBtn.addEventListener("click", loadMoreGames);
+batchCancelBtn.addEventListener("click", cancelBatchAnalysis);
 usernameInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") searchGames();
 });
@@ -396,6 +400,10 @@ async function batchAnalyze() {
     const total = unanalyzedIndices.length;
     let completed = 0;
     
+    // Reset state
+    pendingJobIds = [];
+    batchCancelled = false;
+    
     // Show progress bar, hide button
     batchAnalyzeBtn.classList.add("hidden");
     batchProgress.classList.remove("hidden");
@@ -403,6 +411,11 @@ async function batchAnalyze() {
     
     // Process one game at a time (fair queuing)
     for (const index of unanalyzedIndices) {
+        // Check if cancelled
+        if (batchCancelled) {
+            break;
+        }
+        
         const game = currentGames[index];
         
         try {
@@ -432,10 +445,16 @@ async function batchAnalyze() {
                 continue;
             }
 
+            // Track job ID for potential cancellation
+            pendingJobIds.push(data.job_id);
+
             // Poll for this job to complete before submitting next
             const result = await pollBatchJobStatus(data.job_id, completed, total);
             
-            if (result && !result.error) {
+            // Remove from pending once complete
+            pendingJobIds = pendingJobIds.filter(id => id !== data.job_id);
+            
+            if (result && !result.error && !result.cancelled) {
                 game.cached_white_elo = result.white_elo;
                 game.cached_black_elo = result.black_elo;
                 updateGameCard(index);
@@ -452,6 +471,8 @@ async function batchAnalyze() {
     // Hide progress bar, show button
     batchProgress.classList.add("hidden");
     batchAnalyzeBtn.classList.remove("hidden");
+    pendingJobIds = [];
+    batchCancelled = false;
     updateBatchButtonText();
     
     // Update graph if in graph view
@@ -462,6 +483,11 @@ async function batchAnalyze() {
 
 async function pollBatchJobStatus(jobId, completed, total) {
     while (true) {
+        // Check if cancelled
+        if (batchCancelled) {
+            return { cancelled: true };
+        }
+        
         const response = await fetch(`/api/job/${jobId}`);
         const data = await response.json();
         
@@ -477,6 +503,10 @@ async function pollBatchJobStatus(jobId, completed, total) {
             return { error: data.error || "Analysis failed" };
         }
         
+        if (data.status === "cancelled") {
+            return { cancelled: true };
+        }
+        
         // Update progress with queue position
         if (data.status === "queued") {
             updateBatchProgress(completed, total, `Queue position: ${data.position}`);
@@ -488,6 +518,43 @@ async function pollBatchJobStatus(jobId, completed, total) {
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
 }
+
+async function cancelBatchAnalysis() {
+    batchCancelled = true;
+    updateBatchProgress(0, 0, "Cancelling...");
+    
+    // Cancel all pending jobs on server
+    for (const jobId of pendingJobIds) {
+        try {
+            await fetch(`/api/job/${jobId}`, { method: "DELETE" });
+        } catch (error) {
+            console.error(`Failed to cancel job ${jobId}:`, error);
+        }
+    }
+    
+    pendingJobIds = [];
+}
+
+async function cancelPendingJobs() {
+    // Cancel all pending jobs (called on page unload)
+    for (const jobId of pendingJobIds) {
+        try {
+            // Use sendBeacon for reliability during page unload
+            navigator.sendBeacon(`/api/job/${jobId}/cancel`);
+        } catch (error) {
+            // Fallback to fetch
+            fetch(`/api/job/${jobId}`, { method: "DELETE" }).catch(() => {});
+        }
+    }
+    pendingJobIds = [];
+}
+
+// Cancel pending jobs when page is closed/reloaded
+window.addEventListener("beforeunload", () => {
+    if (pendingJobIds.length > 0) {
+        cancelPendingJobs();
+    }
+});
 
 function updateBatchProgress(completed, total, statusText = null) {
     const percent = Math.round((completed / total) * 100);

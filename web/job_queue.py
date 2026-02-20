@@ -17,6 +17,7 @@ class JobStatus(Enum):
     PROCESSING = "processing"
     COMPLETE = "complete"
     ERROR = "error"
+    CANCELLED = "cancelled"
 
 
 @dataclass
@@ -37,11 +38,16 @@ class AnalysisQueue:
         self.lock = threading.Lock()
         self.worker_thread = None
         self.analyze_func = None
+        self.cache_check_func = None
         self.current_job_id: Optional[str] = None
         
     def set_analyze_function(self, func):
         """Set the function that performs analysis."""
         self.analyze_func = func
+    
+    def set_cache_check_function(self, func):
+        """Set the function that checks if a game is already cached."""
+        self.cache_check_func = func
         
     def start_worker(self):
         """Start the background worker thread."""
@@ -81,6 +87,23 @@ class AnalysisQueue:
                 "error": job.error,
             }
     
+    def cancel_job(self, job_id: str) -> bool:
+        """
+        Cancel a job if it's still queued.
+        Returns True if cancelled, False if not found or already processing/complete.
+        """
+        with self.lock:
+            job = self.jobs.get(job_id)
+            if not job:
+                return False
+            
+            # Can only cancel queued jobs
+            if job.status == JobStatus.QUEUED:
+                job.status = JobStatus.CANCELLED
+                return True
+            
+            return False
+    
     def _get_position(self, job_id: str) -> int:
         """Get position in queue (0 = processing, 1+ = waiting)."""
         if self.current_job_id == job_id:
@@ -119,11 +142,25 @@ class AnalysisQueue:
                 if not job:
                     self.queue.task_done()
                     continue
+                
+                # Skip cancelled jobs
+                if job.status == JobStatus.CANCELLED:
+                    self.queue.task_done()
+                    continue
                     
                 job.status = JobStatus.PROCESSING
                 self.current_job_id = job_id
             
             try:
+                # Check cache before processing (another request may have completed it)
+                if self.cache_check_func and job.game_id:
+                    cached = self.cache_check_func(job.game_id)
+                    if cached:
+                        with self.lock:
+                            job.result = cached
+                            job.status = JobStatus.COMPLETE
+                        continue
+                
                 if self.analyze_func:
                     result = self.analyze_func(job.pgn, job.game_id)
                     with self.lock:

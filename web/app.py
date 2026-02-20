@@ -233,6 +233,28 @@ def get_job_status(job_id):
     return jsonify(status)
 
 
+@app.route("/api/job/<job_id>", methods=["DELETE"])
+def cancel_job(job_id):
+    """Cancel a queued job."""
+    cancelled = analysis_queue.cancel_job(job_id)
+    
+    return jsonify({
+        "job_id": job_id,
+        "cancelled": cancelled
+    })
+
+
+@app.route("/api/job/<job_id>/cancel", methods=["POST"])
+def cancel_job_post(job_id):
+    """Cancel a queued job (POST version for sendBeacon)."""
+    cancelled = analysis_queue.cancel_job(job_id)
+    
+    return jsonify({
+        "job_id": job_id,
+        "cancelled": cancelled
+    })
+
+
 @app.route("/api/queue/status")
 def get_queue_status():
     """Get overall queue status."""
@@ -294,6 +316,17 @@ def get_sequential_predictions(model, positions, analysis):
 
 _initialized = False
 
+def check_cache(game_id: str) -> dict | None:
+    """Check if a game analysis is already cached."""
+    cached = db.get_cached_analysis(game_id)
+    if cached:
+        return {
+            "white_elo": cached["white_elo"],
+            "black_elo": cached["black_elo"],
+        }
+    return None
+
+
 def init_app():
     """Initialize the application."""
     global _initialized
@@ -307,6 +340,7 @@ def init_app():
     
     print("Starting analysis worker...")
     analysis_queue.set_analyze_function(perform_analysis)
+    analysis_queue.set_cache_check_function(check_cache)
     analysis_queue.start_worker()
     print("Worker started!")
 
