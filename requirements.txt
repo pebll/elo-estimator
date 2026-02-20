@@ -8,5 +8,9 @@ tqdm
 matplotlib
 cairosvg
 
+# Web application
+flask
+requests
+
 # Local library to import helpful functions and the trained model
 -e .

@@ -8,3 +8,4 @@ datasets/*/*.pt
 /.vscode
 temp
 **/vis
+venv/

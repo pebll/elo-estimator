@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elo Estimator - Guess Your Rating</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>♟ Elo Estimator</h1>
+            <p class="subtitle">AI-powered rating prediction based on your moves</p>
+        </header>
+
+        <section class="search-section">
+            <div class="search-box">
+                <input type="text" id="username-input" placeholder="Enter Lichess username..." autocomplete="off">
+                <button id="search-btn">Search</button>
+            </div>
+            <div id="error-message" class="error-message"></div>
+        </section>
+
+        <section id="games-section" class="games-section hidden">
+            <h2>Recent Games for <span id="display-username"></span></h2>
+            <div id="games-list" class="games-list"></div>
+        </section>
+
+        <section id="analysis-section" class="analysis-section hidden">
+            <div class="analysis-header">
+                <h2>Analysis Results</h2>
+                <button id="back-btn" class="back-btn">← Back to Games</button>
+            </div>
+            
+            <div class="game-info" id="game-info"></div>
+            
+            <div class="predictions-container">
+                <div class="prediction-card white-card">
+                    <h3>White</h3>
+                    <div class="predicted-elo" id="white-elo">-</div>
+                    <div class="actual-elo" id="white-actual">Actual: -</div>
+                </div>
+                <div class="prediction-card black-card">
+                    <h3>Black</h3>
+                    <div class="predicted-elo" id="black-elo">-</div>
+                    <div class="actual-elo" id="black-actual">Actual: -</div>
+                </div>
+            </div>
+
+            <div class="charts-container">
+                <div class="chart-wrapper">
+                    <h3>White's Rating Progression</h3>
+                    <canvas id="white-progression-chart"></canvas>
+                </div>
+                <div class="chart-wrapper">
+                    <h3>Black's Rating Progression</h3>
+                    <canvas id="black-progression-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="distribution-container">
+                <div class="chart-wrapper">
+                    <h3>White's Final Probability Distribution</h3>
+                    <canvas id="white-distribution-chart"></canvas>
+                </div>
+                <div class="chart-wrapper">
+                    <h3>Black's Final Probability Distribution</h3>
+                    <canvas id="black-distribution-chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <div id="loading-overlay" class="loading-overlay hidden">
+            <div class="loading-content">
+                <div class="spinner"></div>
+                <p id="loading-text">Analyzing game with Stockfish...</p>
+                <p class="loading-subtitle">This may take 30-60 seconds</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
