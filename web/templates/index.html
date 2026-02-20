@@ -40,9 +40,31 @@
             <div id="error-message" class="error-message"></div>
         </section>
 
-        <section id="games-section" class="games-section hidden">
-            <h2>Recent Games for <span id="display-username"></span></h2>
-            <div id="games-list" class="games-list"></div>
+        <section id="results-section" class="results-section hidden">
+            <div class="results-header">
+                <h2>Recent Games for <span id="display-username"></span></h2>
+                <div class="view-toggle">
+                    <button id="list-view-btn" class="view-btn active">List</button>
+                    <button id="graph-view-btn" class="view-btn">Graph</button>
+                </div>
+            </div>
+            
+            <div id="list-view" class="list-view">
+                <div id="games-list" class="games-list"></div>
+            </div>
+            
+            <div id="graph-view" class="graph-view hidden">
+                <div class="graph-container">
+                    <canvas id="elo-chart"></canvas>
+                </div>
+                <div class="graph-legend">
+                    <span class="legend-item"><span class="legend-color green"></span> Estimated ELO</span>
+                    <span class="legend-item"><span class="legend-color blue"></span> True ELO</span>
+                    <span class="legend-item"><span class="legend-line dotted"></span> Raw</span>
+                    <span class="legend-item"><span class="legend-line solid"></span> MA(10)</span>
+                    <span class="legend-item"><span class="legend-color red"></span> Missing (interpolated)</span>
+                </div>
+            </div>
         </section>
 
         <div id="loading-overlay" class="loading-overlay hidden">
@@ -54,6 +76,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

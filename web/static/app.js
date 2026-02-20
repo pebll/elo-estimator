@@ -2,18 +2,24 @@
 
 let currentGames = [];
 let currentUsername = "";
+let currentView = "list";
+let eloChart = null;
 
 // DOM Elements
 const usernameInput = document.getElementById("username-input");
 const searchBtn = document.getElementById("search-btn");
 const errorMessage = document.getElementById("error-message");
-const gamesSection = document.getElementById("games-section");
+const resultsSection = document.getElementById("results-section");
 const gamesList = document.getElementById("games-list");
 const displayUsername = document.getElementById("display-username");
 const loadingOverlay = document.getElementById("loading-overlay");
 const loadingText = document.getElementById("loading-text");
 const variantFilter = document.getElementById("variant-filter");
 const timeFilter = document.getElementById("time-filter");
+const listViewBtn = document.getElementById("list-view-btn");
+const graphViewBtn = document.getElementById("graph-view-btn");
+const listView = document.getElementById("list-view");
+const graphView = document.getElementById("graph-view");
 
 // Event Listeners
 searchBtn.addEventListener("click", searchGames);
@@ -22,9 +28,27 @@ usernameInput.addEventListener("keypress", (e) => {
 });
 variantFilter.addEventListener("change", onVariantChange);
 timeFilter.addEventListener("change", onFilterChange);
+listViewBtn.addEventListener("click", () => switchView("list"));
+graphViewBtn.addEventListener("click", () => switchView("graph"));
+
+function switchView(view) {
+    currentView = view;
+    
+    if (view === "list") {
+        listViewBtn.classList.add("active");
+        graphViewBtn.classList.remove("active");
+        listView.classList.remove("hidden");
+        graphView.classList.add("hidden");
+    } else {
+        listViewBtn.classList.remove("active");
+        graphViewBtn.classList.add("active");
+        listView.classList.add("hidden");
+        graphView.classList.remove("hidden");
+        renderGraph();
+    }
+}
 
 function onVariantChange() {
-    // Update time control options based on variant
     const variant = variantFilter.value;
     
     if (variant === "chess960") {
@@ -42,14 +66,12 @@ function onVariantChange() {
         `;
     }
     
-    // Re-search if we already have a username
     if (currentUsername) {
         searchGames();
     }
 }
 
 function onFilterChange() {
-    // Re-search if we already have a username
     if (currentUsername) {
         searchGames();
     }
@@ -70,7 +92,7 @@ async function searchGames() {
 
     try {
         const params = new URLSearchParams({
-            max: 20,
+            max: 50,
             variant: variant,
             time_control: timeControl
         });
@@ -84,7 +106,7 @@ async function searchGames() {
 
         currentGames = data.games;
         currentUsername = data.username;
-        displayGames();
+        displayResults();
     } catch (error) {
         showError(error.message);
     } finally {
@@ -92,13 +114,22 @@ async function searchGames() {
     }
 }
 
-function displayGames() {
+function displayResults() {
     displayUsername.textContent = currentUsername;
+    resultsSection.classList.remove("hidden");
+    
+    displayGames();
+    
+    if (currentView === "graph") {
+        renderGraph();
+    }
+}
+
+function displayGames() {
     gamesList.innerHTML = "";
 
     if (currentGames.length === 0) {
         gamesList.innerHTML = '<p class="no-games">No games found for this user</p>';
-        gamesSection.classList.remove("hidden");
         return;
     }
 
@@ -106,8 +137,6 @@ function displayGames() {
         const gameCard = createGameCard(game, index);
         gamesList.appendChild(gameCard);
     });
-
-    gamesSection.classList.remove("hidden");
 }
 
 function createGameCard(game, index) {
@@ -126,10 +155,8 @@ function createGameCard(game, index) {
     const resultClass = getResultClass(game.result, game.white, currentUsername);
     const timeControl = formatTimeControl(game.time_control);
     
-    // Determine if current user is white or black
     const isUserWhite = game.white.toLowerCase() === currentUsername.toLowerCase();
     
-    // Build prediction display (user's ELO bold on left, opponent on right)
     let predictionHtml = "";
     if (isAnalyzed) {
         const userElo = isUserWhite ? game.cached_white_elo : game.cached_black_elo;
@@ -179,7 +206,6 @@ function createGameCard(game, index) {
 async function analyzeGame(index) {
     const game = currentGames[index];
     
-    // Skip if already analyzed
     if (game.cached_white_elo !== undefined) {
         return;
     }
@@ -199,14 +225,17 @@ async function analyzeGame(index) {
             throw new Error(data.error || "Analysis failed");
         }
 
-        // Update game data with cached predictions
         game.cached_white_elo = data.white_elo;
         game.cached_black_elo = data.black_elo;
 
-        // Re-render just this card
         const oldCard = document.getElementById(`game-card-${index}`);
         const newCard = createGameCard(game, index);
         oldCard.replaceWith(newCard);
+        
+        // Update graph if in graph view
+        if (currentView === "graph") {
+            renderGraph();
+        }
         
     } catch (error) {
         showError(error.message);
@@ -215,7 +244,242 @@ async function analyzeGame(index) {
     }
 }
 
-// Utility functions
+// ============ GRAPH FUNCTIONS ============
+
+function prepareGraphData() {
+    // Reverse games so oldest is first (index 0 = oldest game)
+    const games = [...currentGames].reverse();
+    
+    const trueElos = [];
+    const estimatedElos = [];
+    const isMissing = [];
+    
+    games.forEach((game, i) => {
+        const isUserWhite = game.white.toLowerCase() === currentUsername.toLowerCase();
+        
+        // True ELO from game data
+        const trueElo = parseInt(isUserWhite ? game.white_elo : game.black_elo) || null;
+        trueElos.push(trueElo);
+        
+        // Estimated ELO (may be missing)
+        if (game.cached_white_elo !== undefined) {
+            const estElo = isUserWhite ? game.cached_white_elo : game.cached_black_elo;
+            estimatedElos.push(estElo);
+            isMissing.push(false);
+        } else {
+            estimatedElos.push(null);
+            isMissing.push(true);
+        }
+    });
+    
+    // Interpolate missing estimated ELOs
+    const interpolatedEstimated = interpolateValues(estimatedElos);
+    
+    // Calculate moving averages
+    const trueMA10 = movingAverage(trueElos, 10);
+    const estimatedMA10 = movingAverage(interpolatedEstimated, 10);
+    
+    return {
+        labels: games.map((_, i) => i + 1),
+        trueElos,
+        estimatedElos: interpolatedEstimated,
+        isMissing,
+        trueMA10,
+        estimatedMA10
+    };
+}
+
+function interpolateValues(values) {
+    const result = [...values];
+    
+    // Find first and last non-null indices
+    let firstValid = values.findIndex(v => v !== null);
+    let lastValid = values.length - 1 - [...values].reverse().findIndex(v => v !== null);
+    
+    if (firstValid === -1) {
+        // All values are null, return as-is
+        return result;
+    }
+    
+    // Fill leading nulls with first valid value
+    for (let i = 0; i < firstValid; i++) {
+        result[i] = values[firstValid];
+    }
+    
+    // Fill trailing nulls with last valid value
+    for (let i = lastValid + 1; i < values.length; i++) {
+        result[i] = values[lastValid];
+    }
+    
+    // Interpolate middle nulls
+    for (let i = firstValid; i <= lastValid; i++) {
+        if (result[i] === null) {
+            // Find previous and next valid values
+            let prevIdx = i - 1;
+            while (prevIdx >= 0 && values[prevIdx] === null) prevIdx--;
+            
+            let nextIdx = i + 1;
+            while (nextIdx < values.length && values[nextIdx] === null) nextIdx++;
+            
+            if (prevIdx >= 0 && nextIdx < values.length) {
+                // Linear interpolation
+                const prevVal = values[prevIdx];
+                const nextVal = values[nextIdx];
+                const ratio = (i - prevIdx) / (nextIdx - prevIdx);
+                result[i] = Math.round(prevVal + (nextVal - prevVal) * ratio);
+            }
+        }
+    }
+    
+    return result;
+}
+
+function movingAverage(values, window) {
+    const result = [];
+    
+    for (let i = 0; i < values.length; i++) {
+        const start = Math.max(0, i - window + 1);
+        const slice = values.slice(start, i + 1).filter(v => v !== null);
+        
+        if (slice.length > 0) {
+            result.push(Math.round(slice.reduce((a, b) => a + b, 0) / slice.length));
+        } else {
+            result.push(null);
+        }
+    }
+    
+    return result;
+}
+
+function renderGraph() {
+    const data = prepareGraphData();
+    const ctx = document.getElementById("elo-chart").getContext("2d");
+    
+    if (eloChart) {
+        eloChart.destroy();
+    }
+    
+    // Create point colors for estimated raw (red for missing)
+    const estimatedPointColors = data.isMissing.map(missing => 
+        missing ? "#bf3030" : "#7cb342"
+    );
+    
+    const estimatedPointRadius = data.isMissing.map(missing =>
+        missing ? 5 : 3
+    );
+    
+    eloChart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: data.labels,
+            datasets: [
+                // True ELO - Raw (dotted blue)
+                {
+                    label: "True ELO (raw)",
+                    data: data.trueElos,
+                    borderColor: "#5c9ece",
+                    backgroundColor: "transparent",
+                    borderWidth: 1,
+                    borderDash: [5, 5],
+                    pointRadius: 2,
+                    pointBackgroundColor: "#5c9ece",
+                    tension: 0.1,
+                    order: 3
+                },
+                // True ELO - MA10 (solid blue)
+                {
+                    label: "True ELO (MA10)",
+                    data: data.trueMA10,
+                    borderColor: "#5c9ece",
+                    backgroundColor: "transparent",
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.3,
+                    order: 2
+                },
+                // Estimated ELO - Raw (dotted green, red for missing)
+                {
+                    label: "Estimated ELO (raw)",
+                    data: data.estimatedElos,
+                    borderColor: "#7cb342",
+                    backgroundColor: "transparent",
+                    borderWidth: 1,
+                    borderDash: [5, 5],
+                    pointRadius: estimatedPointRadius,
+                    pointBackgroundColor: estimatedPointColors,
+                    tension: 0.1,
+                    order: 1
+                },
+                // Estimated ELO - MA10 (solid green)
+                {
+                    label: "Estimated ELO (MA10)",
+                    data: data.estimatedMA10,
+                    borderColor: "#7cb342",
+                    backgroundColor: "transparent",
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.3,
+                    order: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: "index"
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => `Game ${items[0].label}`,
+                        label: (item) => {
+                            const datasetLabel = item.dataset.label;
+                            const value = item.raw;
+                            if (value === null) return null;
+                            
+                            // Check if this is a missing/interpolated point
+                            if (datasetLabel === "Estimated ELO (raw)" && data.isMissing[item.dataIndex]) {
+                                return `${datasetLabel}: ${value} (interpolated)`;
+                            }
+                            return `${datasetLabel}: ${value}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: "Game #",
+                        color: "#bababa"
+                    },
+                    ticks: { 
+                        color: "#bababa",
+                        maxTicksLimit: 20
+                    },
+                    grid: { color: "#404040" }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: "ELO Rating",
+                        color: "#bababa"
+                    },
+                    ticks: { color: "#bababa" },
+                    grid: { color: "#404040" }
+                }
+            }
+        }
+    });
+}
+
+// ============ UTILITY FUNCTIONS ============
+
 function showLoading(text) {
     loadingText.textContent = text;
     loadingOverlay.classList.remove("hidden");
