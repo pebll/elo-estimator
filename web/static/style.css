@@ -472,6 +472,55 @@ header h1 {
     display: none !important;
 }
 
+/* Cached Game Styles */
+.game-card.cached {
+    border-color: var(--accent-green);
+    background-color: rgba(98, 153, 36, 0.05);
+}
+
+.game-card.cached:hover {
+    border-color: var(--accent-green-light);
+}
+
+.cached-predictions {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.cached-badge {
+    display: inline-block;
+    background-color: var(--accent-green);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-bottom: 8px;
+}
+
+.cached-elos {
+    display: flex;
+    justify-content: space-around;
+    gap: 15px;
+}
+
+.cached-elo {
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 4px;
+    background-color: var(--bg-tertiary);
+}
+
+.cached-elo.white {
+    color: var(--white-square);
+}
+
+.cached-elo.black {
+    color: var(--black-square);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .container {

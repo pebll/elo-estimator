@@ -74,10 +74,27 @@ function displayGames() {
 function createGameCard(game, index) {
     const card = document.createElement("div");
     card.className = "game-card";
+    if (game.cached_white_elo) {
+        card.classList.add("cached");
+    }
     card.onclick = () => analyzeGame(index);
 
     const resultClass = getResultClass(game.result, game.white, currentUsername);
     const timeControl = formatTimeControl(game.time_control);
+    
+    // Build cached predictions HTML if available
+    let cachedHtml = "";
+    if (game.cached_white_elo) {
+        cachedHtml = `
+            <div class="cached-predictions">
+                <span class="cached-badge">✓ Analyzed</span>
+                <div class="cached-elos">
+                    <span class="cached-elo white">♔ ${game.cached_white_elo}</span>
+                    <span class="cached-elo black">♚ ${game.cached_black_elo}</span>
+                </div>
+            </div>
+        `;
+    }
 
     card.innerHTML = `
         <div class="game-card-header">
@@ -102,7 +119,8 @@ function createGameCard(game, index) {
             <span class="game-result ${resultClass}">${formatResult(game.result)}</span>
         </div>
         <div class="game-moves">${game.num_moves} moves</div>
-        <div class="analyze-hint">Click to analyze</div>
+        ${cachedHtml}
+        <div class="analyze-hint">${game.cached_white_elo ? "Click to view details" : "Click to analyze"}</div>
     `;
 
     return card;
@@ -111,19 +129,28 @@ function createGameCard(game, index) {
 async function analyzeGame(index) {
     const game = currentGames[index];
     
-    showLoading("Analyzing game with Stockfish...");
+    const loadingMsg = game.cached_white_elo 
+        ? "Loading analysis..." 
+        : "Analyzing game with Stockfish...";
+    showLoading(loadingMsg);
     
     try {
         const response = await fetch("/api/analyze", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pgn: game.pgn })
+            body: JSON.stringify({ pgn: game.pgn, game_id: game.id })
         });
 
         const data = await response.json();
 
         if (!response.ok) {
             throw new Error(data.error || "Analysis failed");
+        }
+
+        // Update cached status in currentGames
+        if (!game.cached_white_elo) {
+            game.cached_white_elo = data.white_elo;
+            game.cached_black_elo = data.black_elo;
         }
 
         displayAnalysis(game, data);

@@ -21,6 +21,8 @@ from elo_ai.helper_functions import game_analysis, position_converters
 from elo_ai.helper_functions.elo_range import get_elo_prediction, get_rating_ranges
 from elo_ai.helper_functions.get_device import get_device
 
+import db
+
 app = Flask(__name__)
 
 device = get_device()
@@ -98,17 +100,36 @@ def get_games(username):
             "pgn": str(game),
         })
     
+    # Check database for cached analyses
+    game_ids = [g["id"] for g in games]
+    cached = db.get_cached_analyses(game_ids)
+    
+    # Add cached predictions to games
+    for game in games:
+        if game["id"] in cached:
+            game["cached_white_elo"] = cached[game["id"]]["white_elo"]
+            game["cached_black_elo"] = cached[game["id"]]["black_elo"]
+    
     return jsonify({"games": games, "username": username})
 
 
 @app.route("/api/analyze", methods=["POST"])
-def analyze_game():
+def analyze_game_endpoint():
     """Analyze a game and return Elo predictions."""
     data = request.get_json()
     pgn_text = data.get("pgn")
+    game_id = data.get("game_id")
     
     if not pgn_text:
         return jsonify({"error": "No PGN provided"}), 400
+    
+    # Check cache first if game_id provided
+    if game_id:
+        cached = db.get_cached_analysis(game_id)
+        if cached:
+            # Return cached result (without progression data - need to recompute for display)
+            # But we still need to run analysis for the charts
+            pass  # Fall through to full analysis for charts
     
     try:
         pgn_io = io.StringIO(pgn_text)
@@ -120,6 +141,13 @@ def analyze_game():
         moves = list(game.mainline_moves())
         if len(moves) < 5:
             return jsonify({"error": "Game too short (minimum 5 moves)"}), 400
+        
+        # Extract game_id from PGN if not provided
+        if not game_id:
+            game_id = game.headers.get("Site", "").split("/")[-1]
+        
+        # Check cache - if we have cached elo, we still need to run analysis for charts
+        cached = db.get_cached_analysis(game_id) if game_id else None
         
         engine = chess.engine.SimpleEngine.popen_uci(ENGINE_PATH)
         
@@ -144,6 +172,10 @@ def analyze_game():
             white_progression = [get_elo_prediction(p[0], round=True)[0] for p in predictions]
             black_progression = [get_elo_prediction(p[1], round=True)[0] for p in predictions]
             
+            # Save to database
+            if game_id:
+                db.save_analysis(game_id, white_elo, black_elo)
+            
         finally:
             engine.close()
         
@@ -156,6 +188,7 @@ def analyze_game():
             "black_probabilities": black_probs,
             "rating_ranges": rating_ranges,
             "num_moves": len(moves),
+            "cached": False,
         })
         
     except Exception as e:
