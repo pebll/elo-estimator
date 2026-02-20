@@ -22,6 +22,7 @@ from elo_ai.helper_functions.elo_range import get_elo_prediction, get_rating_ran
 from elo_ai.helper_functions.get_device import get_device
 
 import db
+from job_queue import analysis_queue
 
 app = Flask(__name__)
 
@@ -175,7 +176,7 @@ def get_games(username):
 
 @app.route("/api/analyze", methods=["POST"])
 def analyze_game_endpoint():
-    """Analyze a game and return Elo predictions."""
+    """Submit a game for analysis. Returns job_id and queue position."""
     data = request.get_json()
     pgn_text = data.get("pgn")
     game_id = data.get("game_id")
@@ -183,61 +184,97 @@ def analyze_game_endpoint():
     if not pgn_text:
         return jsonify({"error": "No PGN provided"}), 400
     
-    # Check cache first if game_id provided
+    # Check cache first - if already analyzed, return immediately
     if game_id:
         cached = db.get_cached_analysis(game_id)
         if cached:
-            # Return cached result (without progression data - need to recompute for display)
-            # But we still need to run analysis for the charts
-            pass  # Fall through to full analysis for charts
+            return jsonify({
+                "status": "complete",
+                "result": {
+                    "white_elo": cached["white_elo"],
+                    "black_elo": cached["black_elo"],
+                },
+                "cached": True
+            })
     
+    # Validate PGN before queueing
     try:
         pgn_io = io.StringIO(pgn_text)
         game = chess.pgn.read_game(pgn_io)
-        
         if game is None:
             return jsonify({"error": "Invalid PGN"}), 400
-        
         moves = list(game.mainline_moves())
         if len(moves) < 5:
             return jsonify({"error": "Game too short (minimum 5 moves)"}), 400
-        
-        # Extract game_id from PGN if not provided
         if not game_id:
             game_id = game.headers.get("Site", "").split("/")[-1]
+    except Exception as e:
+        return jsonify({"error": f"Invalid PGN: {str(e)}"}), 400
+    
+    # Submit to queue
+    job_id, position = analysis_queue.submit_job(pgn_text, game_id)
+    
+    return jsonify({
+        "status": "queued",
+        "job_id": job_id,
+        "position": position,
+        "queue_length": analysis_queue.get_queue_length()
+    })
+
+
+@app.route("/api/job/<job_id>")
+def get_job_status(job_id):
+    """Get the status of an analysis job."""
+    status = analysis_queue.get_job_status(job_id)
+    
+    if not status:
+        return jsonify({"error": "Job not found"}), 404
+    
+    return jsonify(status)
+
+
+@app.route("/api/queue/status")
+def get_queue_status():
+    """Get overall queue status."""
+    return jsonify({
+        "queue_length": analysis_queue.get_queue_length()
+    })
+
+
+def perform_analysis(pgn_text: str, game_id: str) -> dict:
+    """
+    Perform the actual game analysis.
+    This function is called by the queue worker.
+    """
+    pgn_io = io.StringIO(pgn_text)
+    game = chess.pgn.read_game(pgn_io)
+    
+    engine = chess.engine.SimpleEngine.popen_uci(ENGINE_PATH)
+    
+    try:
+        analysis = game_analysis.analyze_game(game, engine, progress_bar=False, time_limit=0.1)
         
-        # Check cache - if we have cached elo, we still need to run analysis for charts
-        cached = db.get_cached_analysis(game_id) if game_id else None
+        func = position_converters.fen_to_board_mirror
+        positions, _elo = position_converters.convert_position(game, func)
         
-        engine = chess.engine.SimpleEngine.popen_uci(ENGINE_PATH)
+        model = load_model()
+        predictions = get_sequential_predictions(model, positions.to(device), analysis.to(device))
         
-        try:
-            analysis = game_analysis.analyze_game(game, engine, progress_bar=False, time_limit=0.1)
-            
-            func = position_converters.fen_to_board_mirror
-            positions, _elo = position_converters.convert_position(game, func)
-            
-            model = load_model()
-            predictions = get_sequential_predictions(model, positions.to(device), analysis.to(device))
-            
-            final_pred = predictions[-1]
-            white_elo = get_elo_prediction(final_pred[0], is_chessdotcom=False, round=True)[0]
-            black_elo = get_elo_prediction(final_pred[1], is_chessdotcom=False, round=True)[0]
-            
-            # Save to database
-            if game_id:
-                db.save_analysis(game_id, white_elo, black_elo)
-            
-        finally:
-            engine.close()
+        final_pred = predictions[-1]
+        white_elo = get_elo_prediction(final_pred[0], is_chessdotcom=False, round=True)[0]
+        black_elo = get_elo_prediction(final_pred[1], is_chessdotcom=False, round=True)[0]
         
-        return jsonify({
+        # Save to database
+        if game_id:
+            db.save_analysis(game_id, white_elo, black_elo)
+        
+        return {
             "white_elo": white_elo,
             "black_elo": black_elo,
-        })
+        }
         
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    finally:
+        engine.close()
 
 
 def get_sequential_predictions(model, positions, analysis):
@@ -255,8 +292,29 @@ def get_sequential_predictions(model, positions, analysis):
     return predictions
 
 
-if __name__ == "__main__":
+_initialized = False
+
+def init_app():
+    """Initialize the application."""
+    global _initialized
+    if _initialized:
+        return
+    _initialized = True
+    
     print("Loading model...")
     load_model()
-    print("Model loaded! Starting server...")
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    print("Model loaded!")
+    
+    print("Starting analysis worker...")
+    analysis_queue.set_analyze_function(perform_analysis)
+    analysis_queue.start_worker()
+    print("Worker started!")
+
+
+# Initialize on import for production WSGI servers
+init_app()
+
+
+if __name__ == "__main__":
+    print("Starting server...")
+    app.run(debug=True, host="127.0.0.1", port=5000, threaded=True)

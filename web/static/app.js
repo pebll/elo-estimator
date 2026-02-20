@@ -28,6 +28,8 @@ const progressText = document.getElementById("progress-text");
 const progressPercent = document.getElementById("progress-percent");
 const progressFill = document.getElementById("progress-fill");
 const loadMoreBtn = document.getElementById("load-more-btn");
+const queueIndicator = document.getElementById("queue-indicator");
+const queueCount = document.getElementById("queue-count");
 
 // Event Listeners
 searchBtn.addEventListener("click", searchGames);
@@ -290,9 +292,10 @@ async function analyzeGame(index) {
         return;
     }
     
-    showLoading("Analyzing game with Stockfish...");
+    showLoading("Submitting to queue...");
     
     try {
+        // Submit job to queue
         const response = await fetch("/api/analyze", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -305,25 +308,75 @@ async function analyzeGame(index) {
             throw new Error(data.error || "Analysis failed");
         }
 
-        game.cached_white_elo = data.white_elo;
-        game.cached_black_elo = data.black_elo;
-
-        const oldCard = document.getElementById(`game-card-${index}`);
-        const newCard = createGameCard(game, index);
-        oldCard.replaceWith(newCard);
-        
-        // Update batch button text
-        updateBatchButtonText();
-        
-        // Update graph if in graph view
-        if (currentView === "graph") {
-            renderGraph();
+        // If already cached, update immediately
+        if (data.cached) {
+            game.cached_white_elo = data.result.white_elo;
+            game.cached_black_elo = data.result.black_elo;
+            updateGameCard(index);
+            hideLoading();
+            return;
         }
+
+        // Poll for job completion
+        const result = await pollJobStatus(data.job_id);
+        
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        
+        game.cached_white_elo = result.white_elo;
+        game.cached_black_elo = result.black_elo;
+        
+        updateGameCard(index);
         
     } catch (error) {
         showError(error.message);
     } finally {
         hideLoading();
+    }
+}
+
+async function pollJobStatus(jobId) {
+    while (true) {
+        const response = await fetch(`/api/job/${jobId}`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            return { error: data.error || "Job not found" };
+        }
+        
+        if (data.status === "complete") {
+            return data.result;
+        }
+        
+        if (data.status === "error") {
+            return { error: data.error || "Analysis failed" };
+        }
+        
+        // Update loading message with queue position
+        if (data.status === "queued") {
+            showLoading(`In queue: position ${data.position}`);
+        } else if (data.status === "processing") {
+            showLoading("Analyzing game...");
+        }
+        
+        // Wait before polling again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+}
+
+function updateGameCard(index) {
+    const game = currentGames[index];
+    const oldCard = document.getElementById(`game-card-${index}`);
+    if (oldCard) {
+        const newCard = createGameCard(game, index);
+        oldCard.replaceWith(newCard);
+    }
+    
+    updateBatchButtonText();
+    
+    if (currentView === "graph") {
+        renderGraph();
     }
 }
 
@@ -346,12 +399,14 @@ async function batchAnalyze() {
     // Show progress bar, hide button
     batchAnalyzeBtn.classList.add("hidden");
     batchProgress.classList.remove("hidden");
-    updateBatchProgress(completed, total);
+    updateBatchProgress(completed, total, "Submitting...");
     
+    // Process one game at a time (fair queuing)
     for (const index of unanalyzedIndices) {
         const game = currentGames[index];
         
         try {
+            // Submit job
             const response = await fetch("/api/analyze", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -360,17 +415,32 @@ async function batchAnalyze() {
 
             const data = await response.json();
 
-            if (response.ok) {
-                game.cached_white_elo = data.white_elo;
-                game.cached_black_elo = data.black_elo;
-
-                // Update the card
-                const oldCard = document.getElementById(`game-card-${index}`);
-                if (oldCard) {
-                    const newCard = createGameCard(game, index);
-                    oldCard.replaceWith(newCard);
-                }
+            if (!response.ok) {
+                console.error(`Failed to submit game ${index}:`, data.error);
+                completed++;
+                updateBatchProgress(completed, total);
+                continue;
             }
+
+            // If already cached, update immediately
+            if (data.cached) {
+                game.cached_white_elo = data.result.white_elo;
+                game.cached_black_elo = data.result.black_elo;
+                updateGameCard(index);
+                completed++;
+                updateBatchProgress(completed, total);
+                continue;
+            }
+
+            // Poll for this job to complete before submitting next
+            const result = await pollBatchJobStatus(data.job_id, completed, total);
+            
+            if (result && !result.error) {
+                game.cached_white_elo = result.white_elo;
+                game.cached_black_elo = result.black_elo;
+                updateGameCard(index);
+            }
+            
         } catch (error) {
             console.error(`Failed to analyze game ${index}:`, error);
         }
@@ -390,12 +460,46 @@ async function batchAnalyze() {
     }
 }
 
-function updateBatchProgress(completed, total) {
+async function pollBatchJobStatus(jobId, completed, total) {
+    while (true) {
+        const response = await fetch(`/api/job/${jobId}`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            return { error: data.error || "Job not found" };
+        }
+        
+        if (data.status === "complete") {
+            return data.result;
+        }
+        
+        if (data.status === "error") {
+            return { error: data.error || "Analysis failed" };
+        }
+        
+        // Update progress with queue position
+        if (data.status === "queued") {
+            updateBatchProgress(completed, total, `Queue position: ${data.position}`);
+        } else if (data.status === "processing") {
+            updateBatchProgress(completed, total, "Analyzing...");
+        }
+        
+        // Wait before polling again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+}
+
+function updateBatchProgress(completed, total, statusText = null) {
     const percent = Math.round((completed / total) * 100);
-    progressText.textContent = `Analyzing game ${completed + 1}/${total}...`;
+    
     if (completed === total) {
         progressText.textContent = `Completed ${total} games!`;
+    } else if (statusText) {
+        progressText.textContent = `Game ${completed + 1}/${total} - ${statusText}`;
+    } else {
+        progressText.textContent = `Game ${completed + 1}/${total}`;
     }
+    
     progressPercent.textContent = `${percent}%`;
     progressFill.style.width = `${percent}%`;
 }
@@ -709,3 +813,33 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+// ============ QUEUE STATUS ============
+
+async function updateQueueStatus() {
+    try {
+        const response = await fetch("/api/queue/status");
+        const data = await response.json();
+        
+        if (response.ok) {
+            const count = data.queue_length || 0;
+            queueCount.textContent = count;
+            
+            if (count > 0) {
+                queueIndicator.classList.remove("hidden");
+                queueIndicator.classList.add("active");
+            } else {
+                queueIndicator.classList.remove("active");
+                queueIndicator.classList.add("hidden");
+            }
+        }
+    } catch (error) {
+        // Silently fail - queue status is not critical
+    }
+}
+
+// Poll queue status every 3 seconds
+setInterval(updateQueueStatus, 3000);
+
+// Initial queue status check
+updateQueueStatus();

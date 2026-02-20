@@ -621,6 +621,41 @@ header h1 {
     margin-top: 8px;
 }
 
+/* Queue Indicator */
+.queue-indicator {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.queue-indicator.active {
+    border-color: var(--accent-gold);
+    color: var(--accent-gold);
+}
+
+.queue-icon {
+    font-size: 1rem;
+}
+
+#queue-count {
+    font-weight: 600;
+    color: var(--text-bright);
+}
+
+.queue-indicator.active #queue-count {
+    color: var(--accent-gold);
+}
+
 /* Hidden utility */
 .hidden {
     display: none !important;
