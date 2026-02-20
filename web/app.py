@@ -55,15 +55,30 @@ def index():
 def get_games(username):
     """Fetch recent games for a Lichess user."""
     max_games = request.args.get("max", 20, type=int)
+    variant = request.args.get("variant", "standard")
+    time_control = request.args.get("time_control", "all")
+    
+    # Build perfType parameter based on filters
+    if variant == "chess960":
+        perf_type = "chess960"
+        # Fetch more games if filtering by specific time control (to ensure we get enough matches)
+        fetch_max = max_games * 5 if time_control != "all" else max_games
+    elif time_control == "all":
+        perf_type = "ultraBullet,bullet,blitz,rapid,classical,correspondence"
+        fetch_max = max_games
+    else:
+        perf_type = time_control
+        fetch_max = max_games
     
     url = f"https://lichess.org/api/games/user/{username}"
     headers = {"Accept": "application/x-chess-pgn"}
     params = {
-        "max": max_games,
+        "max": fetch_max,
         "pgnInJson": False,
         "clocks": False,
         "evals": False,
         "opening": True,
+        "perfType": perf_type,
     }
     
     try:
@@ -99,6 +114,13 @@ def get_games(username):
             "num_moves": len(moves),
             "pgn": str(game),
         })
+    
+    # Filter Chess960 games by specific time control if requested
+    if variant == "chess960" and time_control == "15+10":
+        games = [g for g in games if g["time_control"] == "900+10"]
+    
+    # Limit to requested max after filtering
+    games = games[:max_games]
     
     # Check database for cached analyses
     game_ids = [g["id"] for g in games]

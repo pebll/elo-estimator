@@ -18,6 +18,25 @@
                 <input type="text" id="username-input" placeholder="Enter Lichess username..." autocomplete="off">
                 <button id="search-btn">Search</button>
             </div>
+            <div class="filters">
+                <div class="filter-group">
+                    <label for="variant-filter">Variant</label>
+                    <select id="variant-filter">
+                        <option value="standard">Standard</option>
+                        <option value="chess960">Chess960</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="time-filter">Time Control</label>
+                    <select id="time-filter">
+                        <option value="all">All</option>
+                        <option value="bullet">Bullet</option>
+                        <option value="blitz">Blitz</option>
+                        <option value="rapid">Rapid</option>
+                        <option value="classical">Classical</option>
+                    </select>
+                </div>
+            </div>
             <div id="error-message" class="error-message"></div>
         </section>
 

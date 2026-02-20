@@ -12,12 +12,48 @@ const gamesList = document.getElementById("games-list");
 const displayUsername = document.getElementById("display-username");
 const loadingOverlay = document.getElementById("loading-overlay");
 const loadingText = document.getElementById("loading-text");
+const variantFilter = document.getElementById("variant-filter");
+const timeFilter = document.getElementById("time-filter");
 
 // Event Listeners
 searchBtn.addEventListener("click", searchGames);
 usernameInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") searchGames();
 });
+variantFilter.addEventListener("change", onVariantChange);
+timeFilter.addEventListener("change", onFilterChange);
+
+function onVariantChange() {
+    // Update time control options based on variant
+    const variant = variantFilter.value;
+    
+    if (variant === "chess960") {
+        timeFilter.innerHTML = `
+            <option value="all">All</option>
+            <option value="15+10">15+10</option>
+        `;
+    } else {
+        timeFilter.innerHTML = `
+            <option value="all">All</option>
+            <option value="bullet">Bullet</option>
+            <option value="blitz">Blitz</option>
+            <option value="rapid">Rapid</option>
+            <option value="classical">Classical</option>
+        `;
+    }
+    
+    // Re-search if we already have a username
+    if (currentUsername) {
+        searchGames();
+    }
+}
+
+function onFilterChange() {
+    // Re-search if we already have a username
+    if (currentUsername) {
+        searchGames();
+    }
+}
 
 async function searchGames() {
     const username = usernameInput.value.trim();
@@ -29,8 +65,17 @@ async function searchGames() {
     hideError();
     showLoading("Fetching games from Lichess...");
 
+    const variant = variantFilter.value;
+    const timeControl = timeFilter.value;
+
     try {
-        const response = await fetch(`/api/games/${encodeURIComponent(username)}?max=20`);
+        const params = new URLSearchParams({
+            max: 20,
+            variant: variant,
+            time_control: timeControl
+        });
+        
+        const response = await fetch(`/api/games/${encodeURIComponent(username)}?${params}`);
         const data = await response.json();
 
         if (!response.ok) {
