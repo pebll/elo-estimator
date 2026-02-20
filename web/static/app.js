@@ -4,6 +4,8 @@ let currentGames = [];
 let currentUsername = "";
 let currentView = "list";
 let eloChart = null;
+let hasMoreGames = true;
+let oldestGameTime = null;
 
 // DOM Elements
 const usernameInput = document.getElementById("username-input");
@@ -25,10 +27,12 @@ const batchProgress = document.getElementById("batch-progress");
 const progressText = document.getElementById("progress-text");
 const progressPercent = document.getElementById("progress-percent");
 const progressFill = document.getElementById("progress-fill");
+const loadMoreBtn = document.getElementById("load-more-btn");
 
 // Event Listeners
 searchBtn.addEventListener("click", searchGames);
 batchAnalyzeBtn.addEventListener("click", batchAnalyze);
+loadMoreBtn.addEventListener("click", loadMoreGames);
 usernameInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") searchGames();
 });
@@ -93,6 +97,11 @@ async function searchGames() {
     hideError();
     showLoading("Fetching games from Lichess...");
 
+    // Reset state for new search
+    currentGames = [];
+    hasMoreGames = true;
+    oldestGameTime = null;
+
     const variant = variantFilter.value;
     const timeControl = timeFilter.value;
 
@@ -112,7 +121,61 @@ async function searchGames() {
 
         currentGames = data.games;
         currentUsername = data.username;
+        hasMoreGames = data.has_more;
+        oldestGameTime = data.oldest_time;
+        
         displayResults();
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadMoreGames() {
+    if (!hasMoreGames || !oldestGameTime) return;
+    
+    showLoading("Fetching more games...");
+
+    const variant = variantFilter.value;
+    const timeControl = timeFilter.value;
+
+    try {
+        const params = new URLSearchParams({
+            max: 50,
+            variant: variant,
+            time_control: timeControl,
+            until: oldestGameTime
+        });
+        
+        const response = await fetch(`/api/games/${encodeURIComponent(currentUsername)}?${params}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch games");
+        }
+
+        // Append new games
+        const newGames = data.games;
+        const startIndex = currentGames.length;
+        currentGames = [...currentGames, ...newGames];
+        hasMoreGames = data.has_more;
+        oldestGameTime = data.oldest_time;
+        
+        // Add new game cards
+        newGames.forEach((game, i) => {
+            const gameCard = createGameCard(game, startIndex + i);
+            gamesList.appendChild(gameCard);
+        });
+        
+        updateBatchButtonText();
+        updateLoadMoreButton();
+        
+        // Update graph if visible
+        if (currentView === "graph") {
+            renderGraph();
+        }
+        
     } catch (error) {
         showError(error.message);
     } finally {
@@ -126,9 +189,18 @@ function displayResults() {
     
     displayGames();
     updateBatchButtonText();
+    updateLoadMoreButton();
     
     if (currentView === "graph") {
         renderGraph();
+    }
+}
+
+function updateLoadMoreButton() {
+    if (hasMoreGames) {
+        loadMoreBtn.classList.remove("hidden");
+    } else {
+        loadMoreBtn.classList.add("hidden");
     }
 }
 

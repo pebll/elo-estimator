@@ -505,6 +505,31 @@ header h1 {
     background-color: var(--bg-tertiary);
 }
 
+/* Load More Button */
+.load-more-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.load-more-btn {
+    padding: 12px 32px;
+    font-size: 1rem;
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.load-more-btn:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--text-secondary);
+    color: var(--text-bright);
+}
+
 .analyzed-badge {
     color: var(--accent-green);
     font-size: 1rem;

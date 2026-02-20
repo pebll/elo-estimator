@@ -57,6 +57,7 @@ def get_games(username):
     max_games = request.args.get("max", 20, type=int)
     variant = request.args.get("variant", "standard")
     time_control = request.args.get("time_control", "all")
+    until = request.args.get("until", None, type=int)
     
     # Build perfType parameter based on filters
     if variant == "chess960":
@@ -70,6 +71,9 @@ def get_games(username):
         perf_type = time_control
         fetch_max = max_games
     
+    # Fetch extra to determine if there are more games
+    fetch_max += 1
+    
     url = f"https://lichess.org/api/games/user/{username}"
     headers = {"Accept": "application/x-chess-pgn"}
     params = {
@@ -80,6 +84,9 @@ def get_games(username):
         "opening": True,
         "perfType": perf_type,
     }
+    
+    if until:
+        params["until"] = until
     
     try:
         response = requests.get(url, headers=headers, params=params, timeout=30)
@@ -105,6 +112,18 @@ def get_games(username):
         if len(moves) <= 5:
             continue
         
+        # Parse timestamp for pagination
+        utc_date = headers.get("UTCDate", "")
+        utc_time = headers.get("UTCTime", "00:00:00")
+        game_timestamp = None
+        if utc_date:
+            try:
+                from datetime import datetime
+                dt = datetime.strptime(f"{utc_date} {utc_time}", "%Y.%m.%d %H:%M:%S")
+                game_timestamp = int(dt.timestamp() * 1000)
+            except:
+                pass
+        
         games.append({
             "id": headers.get("Site", "").split("/")[-1],
             "white": headers.get("White", "Unknown"),
@@ -117,14 +136,24 @@ def get_games(username):
             "opening": headers.get("Opening", "Unknown"),
             "num_moves": len(moves),
             "pgn": str(game),
+            "timestamp": game_timestamp,
         })
     
     # Filter Chess960 games by specific time control if requested
     if variant == "chess960" and time_control == "15+10":
         games = [g for g in games if g["time_control"] == "900+10"]
     
+    # Check if there are more games (we fetched max+1)
+    requested_max = max_games - 1  # We added 1 earlier
+    has_more = len(games) > requested_max
+    
     # Limit to requested max after filtering
-    games = games[:max_games]
+    games = games[:requested_max]
+    
+    # Get oldest game timestamp for pagination
+    oldest_time = None
+    if games:
+        oldest_time = games[-1].get("timestamp")
     
     # Check database for cached analyses
     game_ids = [g["id"] for g in games]
@@ -136,7 +165,12 @@ def get_games(username):
             game["cached_white_elo"] = cached[game["id"]]["white_elo"]
             game["cached_black_elo"] = cached[game["id"]]["black_elo"]
     
-    return jsonify({"games": games, "username": username})
+    return jsonify({
+        "games": games,
+        "username": username,
+        "has_more": has_more,
+        "oldest_time": oldest_time
+    })
 
 
 @app.route("/api/analyze", methods=["POST"])
