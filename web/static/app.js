@@ -20,9 +20,15 @@ const listViewBtn = document.getElementById("list-view-btn");
 const graphViewBtn = document.getElementById("graph-view-btn");
 const listView = document.getElementById("list-view");
 const graphView = document.getElementById("graph-view");
+const batchAnalyzeBtn = document.getElementById("batch-analyze-btn");
+const batchProgress = document.getElementById("batch-progress");
+const progressText = document.getElementById("progress-text");
+const progressPercent = document.getElementById("progress-percent");
+const progressFill = document.getElementById("progress-fill");
 
 // Event Listeners
 searchBtn.addEventListener("click", searchGames);
+batchAnalyzeBtn.addEventListener("click", batchAnalyze);
 usernameInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") searchGames();
 });
@@ -119,6 +125,7 @@ function displayResults() {
     resultsSection.classList.remove("hidden");
     
     displayGames();
+    updateBatchButtonText();
     
     if (currentView === "graph") {
         renderGraph();
@@ -232,6 +239,9 @@ async function analyzeGame(index) {
         const newCard = createGameCard(game, index);
         oldCard.replaceWith(newCard);
         
+        // Update batch button text
+        updateBatchButtonText();
+        
         // Update graph if in graph view
         if (currentView === "graph") {
             renderGraph();
@@ -241,6 +251,93 @@ async function analyzeGame(index) {
         showError(error.message);
     } finally {
         hideLoading();
+    }
+}
+
+async function batchAnalyze() {
+    // Find unanalyzed games (up to 10)
+    const unanalyzedIndices = [];
+    for (let i = 0; i < currentGames.length && unanalyzedIndices.length < 10; i++) {
+        if (currentGames[i].cached_white_elo === undefined) {
+            unanalyzedIndices.push(i);
+        }
+    }
+    
+    if (unanalyzedIndices.length === 0) {
+        return;
+    }
+    
+    const total = unanalyzedIndices.length;
+    let completed = 0;
+    
+    // Show progress bar, hide button
+    batchAnalyzeBtn.classList.add("hidden");
+    batchProgress.classList.remove("hidden");
+    updateBatchProgress(completed, total);
+    
+    for (const index of unanalyzedIndices) {
+        const game = currentGames[index];
+        
+        try {
+            const response = await fetch("/api/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pgn: game.pgn, game_id: game.id })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                game.cached_white_elo = data.white_elo;
+                game.cached_black_elo = data.black_elo;
+
+                // Update the card
+                const oldCard = document.getElementById(`game-card-${index}`);
+                if (oldCard) {
+                    const newCard = createGameCard(game, index);
+                    oldCard.replaceWith(newCard);
+                }
+            }
+        } catch (error) {
+            console.error(`Failed to analyze game ${index}:`, error);
+        }
+        
+        completed++;
+        updateBatchProgress(completed, total);
+    }
+    
+    // Hide progress bar, show button
+    batchProgress.classList.add("hidden");
+    batchAnalyzeBtn.classList.remove("hidden");
+    updateBatchButtonText();
+    
+    // Update graph if in graph view
+    if (currentView === "graph") {
+        renderGraph();
+    }
+}
+
+function updateBatchProgress(completed, total) {
+    const percent = Math.round((completed / total) * 100);
+    progressText.textContent = `Analyzing game ${completed + 1}/${total}...`;
+    if (completed === total) {
+        progressText.textContent = `Completed ${total} games!`;
+    }
+    progressPercent.textContent = `${percent}%`;
+    progressFill.style.width = `${percent}%`;
+}
+
+function updateBatchButtonText() {
+    const unanalyzedCount = currentGames.filter(g => g.cached_white_elo === undefined).length;
+    if (unanalyzedCount === 0) {
+        batchAnalyzeBtn.textContent = "All Analyzed ✓";
+        batchAnalyzeBtn.disabled = true;
+        batchAnalyzeBtn.classList.add("disabled");
+    } else {
+        const toAnalyze = Math.min(unanalyzedCount, 10);
+        batchAnalyzeBtn.textContent = `Analyze Next ${toAnalyze}`;
+        batchAnalyzeBtn.disabled = false;
+        batchAnalyzeBtn.classList.remove("disabled");
     }
 }
 

@@ -43,9 +43,22 @@
         <section id="results-section" class="results-section hidden">
             <div class="results-header">
                 <h2>Recent Games for <span id="display-username"></span></h2>
-                <div class="view-toggle">
-                    <button id="list-view-btn" class="view-btn active">List</button>
-                    <button id="graph-view-btn" class="view-btn">Graph</button>
+                <div class="header-controls">
+                    <button id="batch-analyze-btn" class="batch-btn">Analyze Next 10</button>
+                    <div class="view-toggle">
+                        <button id="list-view-btn" class="view-btn active">List</button>
+                        <button id="graph-view-btn" class="view-btn">Graph</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="batch-progress" class="batch-progress hidden">
+                <div class="progress-info">
+                    <span id="progress-text">Analyzing game 1/10...</span>
+                    <span id="progress-percent">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div id="progress-fill" class="progress-fill"></div>
                 </div>
             </div>
             
