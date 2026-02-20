@@ -26,50 +26,6 @@
             <div id="games-list" class="games-list"></div>
         </section>
 
-        <section id="analysis-section" class="analysis-section hidden">
-            <div class="analysis-header">
-                <h2>Analysis Results</h2>
-                <button id="back-btn" class="back-btn">← Back to Games</button>
-            </div>
-            
-            <div class="game-info" id="game-info"></div>
-            
-            <div class="predictions-container">
-                <div class="prediction-card white-card">
-                    <h3>White</h3>
-                    <div class="predicted-elo" id="white-elo">-</div>
-                    <div class="actual-elo" id="white-actual">Actual: -</div>
-                </div>
-                <div class="prediction-card black-card">
-                    <h3>Black</h3>
-                    <div class="predicted-elo" id="black-elo">-</div>
-                    <div class="actual-elo" id="black-actual">Actual: -</div>
-                </div>
-            </div>
-
-            <div class="charts-container">
-                <div class="chart-wrapper">
-                    <h3>White's Rating Progression</h3>
-                    <canvas id="white-progression-chart"></canvas>
-                </div>
-                <div class="chart-wrapper">
-                    <h3>Black's Rating Progression</h3>
-                    <canvas id="black-progression-chart"></canvas>
-                </div>
-            </div>
-
-            <div class="distribution-container">
-                <div class="chart-wrapper">
-                    <h3>White's Final Probability Distribution</h3>
-                    <canvas id="white-distribution-chart"></canvas>
-                </div>
-                <div class="chart-wrapper">
-                    <h3>Black's Final Probability Distribution</h3>
-                    <canvas id="black-distribution-chart"></canvas>
-                </div>
-            </div>
-        </section>
-
         <div id="loading-overlay" class="loading-overlay hidden">
             <div class="loading-content">
                 <div class="spinner"></div>
@@ -79,7 +35,6 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

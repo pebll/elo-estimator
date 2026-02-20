@@ -164,14 +164,6 @@ def analyze_game_endpoint():
             white_elo = get_elo_prediction(final_pred[0], is_chessdotcom=False, round=True)[0]
             black_elo = get_elo_prediction(final_pred[1], is_chessdotcom=False, round=True)[0]
             
-            rating_ranges = get_rating_ranges()[:, 0].tolist()
-            
-            white_probs = [p[0].tolist() for p in predictions]
-            black_probs = [p[1].tolist() for p in predictions]
-            
-            white_progression = [get_elo_prediction(p[0], round=True)[0] for p in predictions]
-            black_progression = [get_elo_prediction(p[1], round=True)[0] for p in predictions]
-            
             # Save to database
             if game_id:
                 db.save_analysis(game_id, white_elo, black_elo)
@@ -182,13 +174,6 @@ def analyze_game_endpoint():
         return jsonify({
             "white_elo": white_elo,
             "black_elo": black_elo,
-            "white_progression": white_progression,
-            "black_progression": black_progression,
-            "white_probabilities": white_probs,
-            "black_probabilities": black_probs,
-            "rating_ranges": rating_ranges,
-            "num_moves": len(moves),
-            "cached": False,
         })
         
     except Exception as e:

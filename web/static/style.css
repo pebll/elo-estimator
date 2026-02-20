@@ -130,23 +130,32 @@ header h1 {
 
 .games-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
     gap: 15px;
 }
 
+/* Game Card */
 .game-card {
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 6px;
     padding: 16px;
-    cursor: pointer;
     transition: all 0.2s;
 }
 
-.game-card:hover {
+.game-card.clickable {
+    cursor: pointer;
+}
+
+.game-card.clickable:hover {
     background-color: var(--bg-hover);
     border-color: var(--accent-green);
     transform: translateY(-2px);
+}
+
+.game-card.analyzed {
+    border-color: var(--accent-green);
+    background-color: rgba(98, 153, 36, 0.08);
 }
 
 .game-card-header {
@@ -246,22 +255,58 @@ header h1 {
     color: var(--text-secondary);
 }
 
+.game-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
 .game-moves {
     color: var(--text-secondary);
     font-size: 0.85rem;
 }
 
 .analyze-hint {
-    text-align: center;
     color: var(--accent-blue);
     font-size: 0.85rem;
-    margin-top: 10px;
-    opacity: 0;
-    transition: opacity 0.2s;
 }
 
-.game-card:hover .analyze-hint {
-    opacity: 1;
+.analyzed-badge {
+    color: var(--accent-green);
+    font-size: 1rem;
+}
+
+/* Prediction Display */
+.prediction-display {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.prediction-label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.user-elo {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--accent-green-light);
+}
+
+.elo-separator {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.opponent-elo {
+    font-size: 1.1rem;
+    font-weight: 400;
+    color: var(--text-secondary);
 }
 
 .no-games {
@@ -269,155 +314,6 @@ header h1 {
     color: var(--text-secondary);
     padding: 40px;
     grid-column: 1 / -1;
-}
-
-/* Analysis Section */
-.analysis-section {
-    animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.analysis-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-}
-
-.analysis-header h2 {
-    color: var(--text-bright);
-    font-size: 1.4rem;
-    font-weight: 500;
-}
-
-.back-btn {
-    padding: 8px 16px;
-    background-color: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-}
-
-.back-btn:hover {
-    background-color: var(--bg-hover);
-    border-color: var(--text-secondary);
-}
-
-.game-info {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-    padding: 16px;
-    background-color: var(--bg-secondary);
-    border-radius: 6px;
-    margin-bottom: 25px;
-}
-
-.info-item {
-    color: var(--text-secondary);
-}
-
-.info-item strong {
-    color: var(--text-bright);
-}
-
-/* Predictions */
-.predictions-container {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 20px;
-    margin-bottom: 30px;
-}
-
-.prediction-card {
-    text-align: center;
-    padding: 25px;
-    border-radius: 8px;
-    background-color: var(--bg-secondary);
-    border: 2px solid var(--border-color);
-}
-
-.prediction-card h3 {
-    margin-bottom: 15px;
-    font-weight: 500;
-    font-size: 1.1rem;
-}
-
-.white-card {
-    border-left: 4px solid var(--white-square);
-}
-
-.white-card h3 {
-    color: var(--white-square);
-}
-
-.black-card {
-    border-left: 4px solid var(--black-square);
-}
-
-.black-card h3 {
-    color: var(--black-square);
-}
-
-.predicted-elo {
-    font-size: 3rem;
-    font-weight: 700;
-    color: var(--text-bright);
-    margin-bottom: 10px;
-}
-
-.predicted-elo.excellent {
-    color: var(--accent-green-light);
-}
-
-.predicted-elo.good {
-    color: var(--accent-blue);
-}
-
-.predicted-elo.fair {
-    color: var(--accent-gold);
-}
-
-.predicted-elo.poor {
-    color: var(--accent-red);
-}
-
-.actual-elo {
-    color: var(--text-secondary);
-    font-size: 1rem;
-}
-
-/* Charts */
-.charts-container,
-.distribution-container {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 20px;
-    margin-bottom: 30px;
-}
-
-.chart-wrapper {
-    background-color: var(--bg-secondary);
-    border-radius: 8px;
-    padding: 20px;
-}
-
-.chart-wrapper h3 {
-    margin-bottom: 15px;
-    font-weight: 500;
-    font-size: 1rem;
-    color: var(--text-bright);
-}
-
-.chart-wrapper canvas {
-    height: 250px !important;
 }
 
 /* Loading Overlay */
@@ -472,55 +368,6 @@ header h1 {
     display: none !important;
 }
 
-/* Cached Game Styles */
-.game-card.cached {
-    border-color: var(--accent-green);
-    background-color: rgba(98, 153, 36, 0.05);
-}
-
-.game-card.cached:hover {
-    border-color: var(--accent-green-light);
-}
-
-.cached-predictions {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border-color);
-}
-
-.cached-badge {
-    display: inline-block;
-    background-color: var(--accent-green);
-    color: white;
-    font-size: 0.75rem;
-    font-weight: 500;
-    padding: 2px 8px;
-    border-radius: 3px;
-    margin-bottom: 8px;
-}
-
-.cached-elos {
-    display: flex;
-    justify-content: space-around;
-    gap: 15px;
-}
-
-.cached-elo {
-    font-size: 1.1rem;
-    font-weight: 600;
-    padding: 4px 12px;
-    border-radius: 4px;
-    background-color: var(--bg-tertiary);
-}
-
-.cached-elo.white {
-    color: var(--white-square);
-}
-
-.cached-elo.black {
-    color: var(--black-square);
-}
-
 /* Responsive */
 @media (max-width: 768px) {
     .container {
@@ -531,9 +378,7 @@ header h1 {
         font-size: 1.8rem;
     }
 
-    .predictions-container,
-    .charts-container,
-    .distribution-container {
+    .games-list {
         grid-template-columns: 1fr;
     }
 
