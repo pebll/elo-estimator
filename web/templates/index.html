@@ -77,9 +77,16 @@
                 <div class="graph-legend">
                     <span class="legend-item"><span class="legend-color green"></span> Estimated ELO</span>
                     <span class="legend-item"><span class="legend-color blue"></span> True ELO</span>
-                    <span class="legend-item"><span class="legend-line dotted"></span> Raw</span>
-                    <span class="legend-item"><span class="legend-line solid"></span> MA(10)</span>
                     <span class="legend-item"><span class="legend-color red"></span> Missing (interpolated)</span>
+                    <span class="legend-divider"></span>
+                    <label class="legend-toggle">
+                        <input type="checkbox" id="toggle-raw" checked>
+                        <span class="legend-line dotted"></span> Raw
+                    </label>
+                    <label class="legend-toggle">
+                        <input type="checkbox" id="toggle-ma" checked>
+                        <span class="legend-line solid"></span> MA(10)
+                    </label>
                 </div>
             </div>
         </section>

@@ -33,12 +33,31 @@ const loadMoreBtn = document.getElementById("load-more-btn");
 const queueIndicator = document.getElementById("queue-indicator");
 const queueCount = document.getElementById("queue-count");
 const batchCancelBtn = document.getElementById("batch-cancel-btn");
+const toggleRaw = document.getElementById("toggle-raw");
+const toggleMa = document.getElementById("toggle-ma");
 
 // Event Listeners
 searchBtn.addEventListener("click", searchGames);
 batchAnalyzeBtn.addEventListener("click", batchAnalyze);
 loadMoreBtn.addEventListener("click", loadMoreGames);
 batchCancelBtn.addEventListener("click", cancelBatchAnalysis);
+toggleRaw.addEventListener("change", updateChartVisibility);
+toggleMa.addEventListener("change", updateChartVisibility);
+
+function updateChartVisibility() {
+    if (!eloChart) return;
+    
+    const showRaw = toggleRaw.checked;
+    const showMa = toggleMa.checked;
+    
+    // Datasets: 0=True raw, 1=True MA, 2=Est raw, 3=Est MA
+    eloChart.data.datasets[0].hidden = !showRaw;  // True ELO raw
+    eloChart.data.datasets[2].hidden = !showRaw;  // Estimated ELO raw
+    eloChart.data.datasets[1].hidden = !showMa;   // True ELO MA
+    eloChart.data.datasets[3].hidden = !showMa;   // Estimated ELO MA
+    
+    eloChart.update();
+}
 usernameInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") searchGames();
 });
@@ -725,7 +744,8 @@ function renderGraph() {
                     pointRadius: 2,
                     pointBackgroundColor: "#5c9ece",
                     tension: 0.1,
-                    order: 3
+                    order: 3,
+                    hidden: !toggleRaw.checked
                 },
                 // True ELO - MA10 (solid blue)
                 {
@@ -736,7 +756,8 @@ function renderGraph() {
                     borderWidth: 2,
                     pointRadius: 0,
                     tension: 0.3,
-                    order: 2
+                    order: 2,
+                    hidden: !toggleMa.checked
                 },
                 // Estimated ELO - Raw (dotted green, red for missing)
                 {
@@ -749,7 +770,8 @@ function renderGraph() {
                     pointRadius: estimatedPointRadius,
                     pointBackgroundColor: estimatedPointColors,
                     tension: 0.1,
-                    order: 1
+                    order: 1,
+                    hidden: !toggleRaw.checked
                 },
                 // Estimated ELO - MA10 (solid green)
                 {
@@ -760,7 +782,8 @@ function renderGraph() {
                     borderWidth: 2,
                     pointRadius: 0,
                     tension: 0.3,
-                    order: 0
+                    order: 0,
+                    hidden: !toggleMa.checked
                 }
             ]
         },

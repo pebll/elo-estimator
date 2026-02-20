@@ -371,6 +371,28 @@ header h1 {
     background-color: var(--text-secondary);
 }
 
+.legend-divider {
+    width: 1px;
+    height: 16px;
+    background-color: var(--border-color);
+    margin: 0 8px;
+}
+
+.legend-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.legend-toggle input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    accent-color: var(--accent-green);
+}
+
 /* Game Card */
 .game-card {
     background-color: var(--bg-secondary);
