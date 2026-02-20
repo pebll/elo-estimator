@@ -491,6 +491,20 @@ header h1 {
     font-size: 0.85rem;
 }
 
+.lichess-link {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    text-decoration: none;
+    padding: 2px 6px;
+    border-radius: 3px;
+    transition: all 0.2s;
+}
+
+.lichess-link:hover {
+    color: var(--text-bright);
+    background-color: var(--bg-tertiary);
+}
+
 .analyzed-badge {
     color: var(--accent-green);
     font-size: 1rem;

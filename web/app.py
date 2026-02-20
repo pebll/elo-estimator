@@ -101,6 +101,10 @@ def get_games(username):
         headers = game.headers
         moves = list(game.mainline_moves())
         
+        # Skip games with 5 or fewer moves
+        if len(moves) <= 5:
+            continue
+        
         games.append({
             "id": headers.get("Site", "").split("/")[-1],
             "white": headers.get("White", "Unknown"),

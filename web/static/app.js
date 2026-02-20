@@ -202,6 +202,7 @@ function createGameCard(game, index) {
         </div>
         <div class="game-footer">
             <span class="game-moves">${game.num_moves} moves</span>
+            <a href="https://lichess.org/${game.id}" target="_blank" class="lichess-link" onclick="event.stopPropagation()">View on Lichess ↗</a>
             ${isAnalyzed ? '<span class="analyzed-badge">✓</span>' : '<span class="analyze-hint">Click to analyze</span>'}
         </div>
         ${predictionHtml}
