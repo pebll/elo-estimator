@@ -13,7 +13,7 @@ def analyze_game(game, engine, mate_score=1_000, nof_moves=10, time_limit=0.1, p
 
     moves = list(game.mainline_moves())
     iterations = tqdm.tqdm(range(len(moves)),
-                      desc="Analyzing game") if progress_bar else len(moves)
+                      desc="Analyzing game") if progress_bar else range(len(moves))
 
     for i in iterations:
         move = moves[i]

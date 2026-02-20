@@ -133,16 +133,16 @@ def analyze_game():
             predictions = get_sequential_predictions(model, positions.to(device), analysis.to(device))
             
             final_pred = predictions[-1]
-            white_elo = get_elo_prediction(final_pred[0], is_chessdotcom=False, round=True)
-            black_elo = get_elo_prediction(final_pred[1], is_chessdotcom=False, round=True)
+            white_elo = get_elo_prediction(final_pred[0], is_chessdotcom=False, round=True)[0]
+            black_elo = get_elo_prediction(final_pred[1], is_chessdotcom=False, round=True)[0]
             
             rating_ranges = get_rating_ranges()[:, 0].tolist()
             
             white_probs = [p[0].tolist() for p in predictions]
             black_probs = [p[1].tolist() for p in predictions]
             
-            white_progression = [get_elo_prediction(p[0], round=True) for p in predictions]
-            black_progression = [get_elo_prediction(p[1], round=True) for p in predictions]
+            white_progression = [get_elo_prediction(p[0], round=True)[0] for p in predictions]
+            black_progression = [get_elo_prediction(p[1], round=True)[0] for p in predictions]
             
         finally:
             engine.close()
