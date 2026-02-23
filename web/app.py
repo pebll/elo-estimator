@@ -7,7 +7,7 @@ import os
 import sys
 import io
 import tempfile
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, Blueprint, render_template, jsonify, request, redirect
 
 import requests
 import chess.pgn
@@ -24,19 +24,8 @@ from elo_ai.helper_functions.get_device import get_device
 import db
 from job_queue import analysis_queue
 
-class PrefixMiddleware:
-    def __init__(self, wsgi_app, prefix=''):
-        self.wsgi_app = wsgi_app
-        self.prefix = prefix
-
-    def __call__(self, environ, start_response):
-        environ['SCRIPT_NAME'] = self.prefix
-        return self.wsgi_app(environ, start_response)
-
-URL_PREFIX = os.environ.get('URL_PREFIX', '')
-app = Flask(__name__)
-if URL_PREFIX:
-    app.wsgi_app = PrefixMiddleware(app.wsgi_app, prefix=URL_PREFIX)
+app = Flask(__name__, static_url_path='/elo-estimator/static')
+bp = Blueprint('elo', __name__, url_prefix='/elo-estimator')
 
 device = get_device()
 MODEL = None
@@ -59,12 +48,18 @@ def load_model():
 
 
 @app.route("/")
+def root_redirect():
+    """Redirect root to elo-estimator."""
+    return redirect("/elo-estimator/")
+
+
+@bp.route("/")
 def index():
     """Serve the main page."""
     return render_template("index.html")
 
 
-@app.route("/api/games/<username>")
+@bp.route("/api/games/<username>")
 def get_games(username):
     """Fetch recent games for a Lichess user."""
     max_games = request.args.get("max", 20, type=int)
@@ -186,7 +181,7 @@ def get_games(username):
     })
 
 
-@app.route("/api/analyze", methods=["POST"])
+@bp.route("/api/analyze", methods=["POST"])
 def analyze_game_endpoint():
     """Submit a game for analysis. Returns job_id and queue position."""
     data = request.get_json()
@@ -234,7 +229,7 @@ def analyze_game_endpoint():
     })
 
 
-@app.route("/api/job/<job_id>")
+@bp.route("/api/job/<job_id>")
 def get_job_status(job_id):
     """Get the status of an analysis job."""
     status = analysis_queue.get_job_status(job_id)
@@ -245,7 +240,7 @@ def get_job_status(job_id):
     return jsonify(status)
 
 
-@app.route("/api/job/<job_id>", methods=["DELETE"])
+@bp.route("/api/job/<job_id>", methods=["DELETE"])
 def cancel_job(job_id):
     """Cancel a queued job."""
     cancelled = analysis_queue.cancel_job(job_id)
@@ -256,7 +251,7 @@ def cancel_job(job_id):
     })
 
 
-@app.route("/api/job/<job_id>/cancel", methods=["POST"])
+@bp.route("/api/job/<job_id>/cancel", methods=["POST"])
 def cancel_job_post(job_id):
     """Cancel a queued job (POST version for sendBeacon)."""
     cancelled = analysis_queue.cancel_job(job_id)
@@ -267,7 +262,7 @@ def cancel_job_post(job_id):
     })
 
 
-@app.route("/api/queue/status")
+@bp.route("/api/queue/status")
 def get_queue_status():
     """Get overall queue status."""
     return jsonify({
@@ -356,6 +351,9 @@ def init_app():
     analysis_queue.start_worker()
     print("Worker started!")
 
+
+# Register the blueprint
+app.register_blueprint(bp)
 
 # Initialize on import for production WSGI servers
 init_app()

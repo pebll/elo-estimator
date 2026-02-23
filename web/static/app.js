@@ -1,6 +1,6 @@
 // Elo Estimator Frontend Application
 
-const API_BASE = (window.API_BASE || "").replace(/\/$/, "");
+const API_BASE = "/elo-estimator";
 
 let currentGames = [];
 let currentUsername = "";
