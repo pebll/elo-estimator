@@ -10,3 +10,5 @@ temp
 **/vis
 venv/
 *.db
+build/
+.ipynb_checkpoints/
