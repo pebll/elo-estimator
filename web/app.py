@@ -24,8 +24,19 @@ from elo_ai.helper_functions.get_device import get_device
 import db
 from job_queue import analysis_queue
 
+class PrefixMiddleware:
+    def __init__(self, wsgi_app, prefix=''):
+        self.wsgi_app = wsgi_app
+        self.prefix = prefix
+
+    def __call__(self, environ, start_response):
+        environ['SCRIPT_NAME'] = self.prefix
+        return self.wsgi_app(environ, start_response)
+
 URL_PREFIX = os.environ.get('URL_PREFIX', '')
-app = Flask(__name__, static_url_path=f'{URL_PREFIX}/static')
+app = Flask(__name__)
+if URL_PREFIX:
+    app.wsgi_app = PrefixMiddleware(app.wsgi_app, prefix=URL_PREFIX)
 
 device = get_device()
 MODEL = None
