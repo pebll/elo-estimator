@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elo Estimator - Guess Your Rating</title>
+    <title>Elo Estimator</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -104,6 +104,14 @@
             <span id="queue-count">0</span> in queue
         </div>
     </div>
+
+    <footer class="site-footer">
+        <p>
+            <a target="_blank" href="https://github.com/pebll/elo-estimator">View on GitHub</a> |
+            Model based on <a target="_blank" href="https://github.com/HliasOuzounis/Ai-Guess-the-elo">Ai-Guess-the-elo</a> |
+            <a target="_blank" href="https://icons8.com/icon/36322/rook">Chess</a> icon by <a target="_blank" href="https://icons8.com">Icons8</a>
+        </p>
+    </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>

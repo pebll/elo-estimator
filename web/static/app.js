@@ -11,8 +11,7 @@ let batchCancelled = false;
 
 // DOM Elements
 const usernameInput = document.getElementById("username-input");
-const searchBtn = document.getElementById("search-btn");
-const errorMessage = document.getElementById("error-message");
+const searchBtn = document.getElementById("search-btn"); const errorMessage = document.getElementById("error-message");
 const resultsSection = document.getElementById("results-section");
 const gamesList = document.getElementById("games-list");
 const displayUsername = document.getElementById("display-username");

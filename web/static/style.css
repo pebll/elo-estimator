@@ -756,3 +756,23 @@ header h1 {
         gap: 10px;
     }
 }
+
+/* Footer */
+.site-footer {
+    margin-top: 40px;
+    padding: 20px;
+    border-top: 1px solid var(--border-color);
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.site-footer a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.site-footer a:hover {
+    color: var(--text-bright);
+}
