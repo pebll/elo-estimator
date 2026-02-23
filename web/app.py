@@ -24,7 +24,8 @@ from elo_ai.helper_functions.get_device import get_device
 import db
 from job_queue import analysis_queue
 
-app = Flask(__name__)
+URL_PREFIX = os.environ.get('URL_PREFIX', '')
+app = Flask(__name__, static_url_path=f'{URL_PREFIX}/static')
 
 device = get_device()
 MODEL = None
