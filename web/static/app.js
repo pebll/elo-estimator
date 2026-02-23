@@ -1,5 +1,7 @@
 // Elo Estimator Frontend Application
 
+const API_BASE = (window.API_BASE || "").replace(/\/$/, "");
+
 let currentGames = [];
 let currentUsername = "";
 let currentView = "list";
@@ -136,7 +138,7 @@ async function searchGames() {
             time_control: timeControl
         });
         
-        const response = await fetch(`/api/games/${encodeURIComponent(username)}?${params}`);
+        const response = await fetch(`${API_BASE}/api/games/${encodeURIComponent(username)}?${params}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -172,7 +174,7 @@ async function loadMoreGames() {
             until: oldestGameTime
         });
         
-        const response = await fetch(`/api/games/${encodeURIComponent(currentUsername)}?${params}`);
+        const response = await fetch(`${API_BASE}/api/games/${encodeURIComponent(currentUsername)}?${params}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -318,7 +320,7 @@ async function analyzeGame(index) {
     
     try {
         // Submit job to queue
-        const response = await fetch("/api/analyze", {
+        const response = await fetch(`${API_BASE}/api/analyze`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ pgn: game.pgn, game_id: game.id })
@@ -360,7 +362,7 @@ async function analyzeGame(index) {
 
 async function pollJobStatus(jobId) {
     while (true) {
-        const response = await fetch(`/api/job/${jobId}`);
+        const response = await fetch(`${API_BASE}/api/job/${jobId}`);
         const data = await response.json();
         
         if (!response.ok) {
@@ -438,7 +440,7 @@ async function batchAnalyze() {
         
         try {
             // Submit job
-            const response = await fetch("/api/analyze", {
+            const response = await fetch(`${API_BASE}/api/analyze`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ pgn: game.pgn, game_id: game.id })
@@ -506,7 +508,7 @@ async function pollBatchJobStatus(jobId, completed, total) {
             return { cancelled: true };
         }
         
-        const response = await fetch(`/api/job/${jobId}`);
+        const response = await fetch(`${API_BASE}/api/job/${jobId}`);
         const data = await response.json();
         
         if (!response.ok) {
@@ -544,7 +546,7 @@ async function cancelBatchAnalysis() {
     // Cancel all pending jobs on server
     for (const jobId of pendingJobIds) {
         try {
-            await fetch(`/api/job/${jobId}`, { method: "DELETE" });
+            await fetch(`${API_BASE}/api/job/${jobId}`, { method: "DELETE" });
         } catch (error) {
             console.error(`Failed to cancel job ${jobId}:`, error);
         }
@@ -558,10 +560,10 @@ async function cancelPendingJobs() {
     for (const jobId of pendingJobIds) {
         try {
             // Use sendBeacon for reliability during page unload
-            navigator.sendBeacon(`/api/job/${jobId}/cancel`);
+            navigator.sendBeacon(`${API_BASE}/api/job/${jobId}/cancel`);
         } catch (error) {
             // Fallback to fetch
-            fetch(`/api/job/${jobId}`, { method: "DELETE" }).catch(() => {});
+            fetch(`${API_BASE}/api/job/${jobId}`, { method: "DELETE" }).catch(() => {});
         }
     }
     pendingJobIds = [];
@@ -907,7 +909,7 @@ function escapeHtml(text) {
 
 async function updateQueueStatus() {
     try {
-        const response = await fetch("/api/queue/status");
+        const response = await fetch(`${API_BASE}/api/queue/status`);
         const data = await response.json();
         
         if (response.ok) {
