@@ -416,14 +416,39 @@ header h1 {
     margin-bottom: 20px;
 }
 
-/* Chart.js legend: 3 entries per line, grouped by player */
-.graph-view ul[style*="flex"],
-.graph-view .chartjs-legend ul,
-#elo-chart + * ul {
-    display: grid !important;
+/* Chart legend: 2 rows × 3 columns (3 entries per line, grouped by player) */
+.chart-legend-container {
+    margin-bottom: 15px;
+}
+
+.chart-legend-container ul {
+    display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px 20px;
+    gap: 8px 15px;
+    margin: 0;
+    padding: 0;
     list-style: none;
+}
+
+.chart-legend-container li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.chart-legend-container li .legend-box {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    border-radius: 3px;
+}
+
+.chart-legend-container li.hidden-item {
+    text-decoration: line-through;
+    opacity: 0.6;
 }
 
 .graph-legend {

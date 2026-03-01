@@ -19,7 +19,7 @@
         <section class="search-section">
             <div class="search-box">
                 <div class="username-autocomplete" style="flex: 1;">
-                    <input type="text" id="username-input" placeholder="Enter Lichess username..." autocomplete="off">
+                    <input type="text" id="username-input" name="player" placeholder="Enter Lichess username..." autocomplete="nope">
                     <div id="username-autocomplete-dropdown" class="autocomplete-dropdown hidden"></div>
                 </div>
                 <button id="search-btn">Search</button>
@@ -75,7 +75,7 @@
                     <div class="compare-input-group">
                         <label for="compare-input">Compare with:</label>
                         <div class="username-autocomplete" style="flex: 1;">
-                            <input type="text" id="compare-input" placeholder="Enter Lichess username..." autocomplete="off">
+                            <input type="text" id="compare-input" name="compare-player" placeholder="Enter Lichess username..." autocomplete="nope">
                             <div id="compare-autocomplete-dropdown" class="autocomplete-dropdown hidden"></div>
                         </div>
                         <button id="compare-btn">Load</button>
@@ -88,6 +88,7 @@
                 <div class="graph-container">
                     <canvas id="elo-chart"></canvas>
                 </div>
+                <div id="chart-legend-container" class="chart-legend-container"></div>
                 <div class="graph-legend">
                     <span class="legend-item"><span class="legend-color green"></span> Estimated ELO</span>
                     <span class="legend-item"><span class="legend-color blue"></span> True ELO</span>

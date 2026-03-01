@@ -1064,6 +1064,40 @@ function movingAverage(values, window) {
     return result;
 }
 
+const htmlLegendPlugin = {
+    id: "htmlLegend",
+    afterUpdate(chart, _args, opts) {
+        const container = document.getElementById(opts.containerID);
+        if (!container) return;
+        let ul = container.querySelector("ul");
+        if (!ul) {
+            ul = document.createElement("ul");
+            container.appendChild(ul);
+        }
+        ul.innerHTML = "";
+        const items = chart.options.plugins.legend.labels.generateLabels(chart);
+        items.forEach((item) => {
+            const li = document.createElement("li");
+            li.classList.toggle("hidden-item", item.hidden);
+            li.style.cursor = "pointer";
+            const box = document.createElement("span");
+            box.className = "legend-box";
+            box.style.background = item.fillStyle;
+            box.style.borderColor = item.strokeStyle || item.fillStyle;
+            box.style.borderWidth = "1px";
+            box.style.borderStyle = "solid";
+            const text = document.createTextNode(item.text);
+            li.appendChild(box);
+            li.appendChild(text);
+            li.onclick = () => {
+                chart.setDatasetVisibility(item.datasetIndex, !chart.isDatasetVisible(item.datasetIndex));
+                chart.update();
+            };
+            ul.appendChild(li);
+        });
+    }
+};
+
 function renderGraph() {
     const data = prepareGraphData();
     const ctx = document.getElementById("elo-chart").getContext("2d");
@@ -1165,6 +1199,7 @@ function renderGraph() {
             labels: data.labels,
             datasets: datasets
         },
+        plugins: [htmlLegendPlugin],
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -1173,16 +1208,14 @@ function renderGraph() {
                 mode: "index"
             },
             plugins: {
+                htmlLegend: { containerID: "chart-legend-container" },
                 legend: {
-                    display: true,
-                    position: "top",
+                    display: false,
                     labels: {
                         color: "#bababa",
                         usePointStyle: true,
                         padding: 15,
-                        font: {
-                            size: 12
-                        }
+                        font: { size: 12 }
                     }
                 },
                 tooltip: {
