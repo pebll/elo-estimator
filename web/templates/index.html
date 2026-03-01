@@ -74,13 +74,22 @@
             </div>
             
             <div id="graph-view" class="graph-view hidden">
+                <div class="compare-section">
+                    <div class="compare-input-group">
+                        <label for="compare-input">Compare with:</label>
+                        <input type="text" id="compare-input" placeholder="Enter Lichess username..." autocomplete="off">
+                        <button id="compare-btn">Load</button>
+                    </div>
+                    <div class="load-more-compare-container">
+                        <button id="load-more-compare-btn" class="load-more-btn hidden">Load More (+50)</button>
+                    </div>
+                </div>
                 <div class="graph-container">
                     <canvas id="elo-chart"></canvas>
                 </div>
                 <div class="graph-legend">
                     <span class="legend-item"><span class="legend-color green"></span> Estimated ELO</span>
                     <span class="legend-item"><span class="legend-color blue"></span> True ELO</span>
-                    <span class="legend-item"><span class="legend-color red"></span> Missing (interpolated)</span>
                     <span class="legend-divider"></span>
                     <label class="legend-toggle">
                         <input type="checkbox" id="toggle-raw" checked>

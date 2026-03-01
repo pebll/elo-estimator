@@ -11,6 +11,12 @@ let oldestGameTime = null;
 let pendingJobIds = [];
 let batchCancelled = false;
 
+// Compare user state
+let compareGames = [];
+let compareUsername = "";
+let compareHasMoreGames = false;
+let compareOldestGameTime = null;
+
 // DOM Elements
 const usernameInput = document.getElementById("username-input");
 const searchBtn = document.getElementById("search-btn"); const errorMessage = document.getElementById("error-message");
@@ -36,6 +42,9 @@ const queueCount = document.getElementById("queue-count");
 const batchCancelBtn = document.getElementById("batch-cancel-btn");
 const toggleRaw = document.getElementById("toggle-raw");
 const toggleMa = document.getElementById("toggle-ma");
+const compareInput = document.getElementById("compare-input");
+const compareBtn = document.getElementById("compare-btn");
+const loadMoreCompareBtn = document.getElementById("load-more-compare-btn");
 
 // Event Listeners
 searchBtn.addEventListener("click", searchGames);
@@ -44,6 +53,11 @@ loadMoreBtn.addEventListener("click", loadMoreGames);
 batchCancelBtn.addEventListener("click", cancelBatchAnalysis);
 toggleRaw.addEventListener("change", updateChartVisibility);
 toggleMa.addEventListener("change", updateChartVisibility);
+compareBtn.addEventListener("click", loadCompareUser);
+loadMoreCompareBtn.addEventListener("click", loadMoreCompareGames);
+compareInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") loadCompareUser();
+});
 
 function updateChartVisibility() {
     if (!eloChart) return;
@@ -51,11 +65,24 @@ function updateChartVisibility() {
     const showRaw = toggleRaw.checked;
     const showMa = toggleMa.checked;
     
-    // Datasets: 0=True raw, 1=True MA, 2=Est raw, 3=Est MA
-    eloChart.data.datasets[0].hidden = !showRaw;  // True ELO raw
-    eloChart.data.datasets[2].hidden = !showRaw;  // Estimated ELO raw
+    // Datasets order (for main user):
+    // 0 = Estimated MA (prediction) - full line
+    // 1 = True MA - tirets
+    // 2 = Estimated raw - dotted
+    // For compare user (if exists):
+    // 3 = Compare Estimated MA - full line
+    // 4 = Compare True MA - tirets
+    // 5 = Compare Estimated raw - dotted
+    
+    eloChart.data.datasets[0].hidden = !showMa;   // Estimated ELO MA (prediction)
     eloChart.data.datasets[1].hidden = !showMa;   // True ELO MA
-    eloChart.data.datasets[3].hidden = !showMa;   // Estimated ELO MA
+    eloChart.data.datasets[2].hidden = !showRaw;  // Estimated ELO raw
+    
+    if (eloChart.data.datasets.length > 3) {
+        eloChart.data.datasets[3].hidden = !showMa;   // Compare Estimated ELO MA
+        eloChart.data.datasets[4].hidden = !showMa;   // Compare True ELO MA
+        eloChart.data.datasets[5].hidden = !showRaw;  // Compare Estimated ELO raw
+    }
     
     eloChart.update();
 }
@@ -105,11 +132,23 @@ function onVariantChange() {
     if (currentUsername) {
         searchGames();
     }
+    
+    // Reload compare user if one is loaded
+    if (compareUsername) {
+        compareInput.value = compareUsername;
+        loadCompareUser();
+    }
 }
 
 function onFilterChange() {
     if (currentUsername) {
         searchGames();
+    }
+    
+    // Reload compare user if one is loaded
+    if (compareUsername) {
+        compareInput.value = compareUsername;
+        loadCompareUser();
     }
 }
 
@@ -127,6 +166,14 @@ async function searchGames() {
     currentGames = [];
     hasMoreGames = true;
     oldestGameTime = null;
+    
+    // Clear compare data when main user changes
+    compareGames = [];
+    compareUsername = "";
+    compareHasMoreGames = false;
+    compareOldestGameTime = null;
+    compareInput.value = "";
+    updateLoadMoreCompareButton();
 
     const variant = variantFilter.value;
     const timeControl = timeFilter.value;
@@ -206,6 +253,108 @@ async function loadMoreGames() {
         showError(error.message);
     } finally {
         hideLoading();
+    }
+}
+
+async function loadCompareUser() {
+    const username = compareInput.value.trim();
+    if (!username) {
+        showError("Please enter a username to compare");
+        return;
+    }
+
+    hideError();
+    showLoading("Fetching games for comparison...");
+
+    // Reset state for new compare search
+    compareGames = [];
+    compareHasMoreGames = true;
+    compareOldestGameTime = null;
+
+    const variant = variantFilter.value;
+    const timeControl = timeFilter.value;
+
+    try {
+        const params = new URLSearchParams({
+            max: 50,
+            variant: variant,
+            time_control: timeControl
+        });
+        
+        const response = await fetch(`${API_BASE}/api/games/${encodeURIComponent(username)}?${params}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch games");
+        }
+
+        compareGames = data.games;
+        compareUsername = data.username;
+        compareHasMoreGames = data.has_more;
+        compareOldestGameTime = data.oldest_time;
+        
+        updateLoadMoreCompareButton();
+        renderGraph();
+    } catch (error) {
+        showError(error.message);
+        compareGames = [];
+        compareUsername = "";
+        compareHasMoreGames = false;
+        compareOldestGameTime = null;
+        updateLoadMoreCompareButton();
+        renderGraph();
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadMoreCompareGames() {
+    if (!compareHasMoreGames || !compareOldestGameTime || !compareUsername) return;
+    
+    showLoading("Fetching more games for comparison...");
+
+    const variant = variantFilter.value;
+    const timeControl = timeFilter.value;
+
+    try {
+        const params = new URLSearchParams({
+            max: 50,
+            variant: variant,
+            time_control: timeControl,
+            until: compareOldestGameTime
+        });
+        
+        const response = await fetch(`${API_BASE}/api/games/${encodeURIComponent(compareUsername)}?${params}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch games");
+        }
+
+        // Append new games
+        compareGames = [...compareGames, ...data.games];
+        compareHasMoreGames = data.has_more;
+        compareOldestGameTime = data.oldest_time;
+        
+        updateLoadMoreCompareButton();
+        
+        // Update graph
+        if (currentView === "graph") {
+            renderGraph();
+        }
+        
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+function updateLoadMoreCompareButton() {
+    if (compareHasMoreGames && compareUsername) {
+        loadMoreCompareBtn.classList.remove("hidden");
+    } else {
+        loadMoreCompareBtn.classList.add("hidden");
     }
 }
 
@@ -613,7 +762,6 @@ function prepareGraphData() {
     
     const trueElos = [];
     const estimatedElos = [];
-    const isMissing = [];
     
     games.forEach((game, i) => {
         const isUserWhite = game.white.toLowerCase() === currentUsername.toLowerCase();
@@ -622,31 +770,71 @@ function prepareGraphData() {
         const trueElo = parseInt(isUserWhite ? game.white_elo : game.black_elo) || null;
         trueElos.push(trueElo);
         
-        // Estimated ELO (may be missing)
+        // Estimated ELO - if missing, use true elo instead of interpolating
         if (game.cached_white_elo !== undefined) {
             const estElo = isUserWhite ? game.cached_white_elo : game.cached_black_elo;
             estimatedElos.push(estElo);
-            isMissing.push(false);
         } else {
-            estimatedElos.push(null);
-            isMissing.push(true);
+            // Use true elo if estimated is not available
+            estimatedElos.push(trueElo);
         }
     });
     
-    // Interpolate missing estimated ELOs
-    const interpolatedEstimated = interpolateValues(estimatedElos);
+    // Prepare compare user data if available
+    let compareTrueElos = [];
+    let compareEstimatedElos = [];
+    
+    if (compareGames.length > 0 && compareUsername) {
+        const compareGamesReversed = [...compareGames].reverse();
+        
+        compareGamesReversed.forEach((game, i) => {
+            const isUserWhite = game.white.toLowerCase() === compareUsername.toLowerCase();
+            
+            // True ELO from game data
+            const trueElo = parseInt(isUserWhite ? game.white_elo : game.black_elo) || null;
+            compareTrueElos.push(trueElo);
+            
+            // Estimated ELO - if missing, use true elo instead of interpolating
+            if (game.cached_white_elo !== undefined) {
+                const estElo = isUserWhite ? game.cached_white_elo : game.cached_black_elo;
+                compareEstimatedElos.push(estElo);
+            } else {
+                // Use true elo if estimated is not available
+                compareEstimatedElos.push(trueElo);
+            }
+        });
+    }
+    
+    // Match length to longest dataset
+    const maxLength = Math.max(games.length, compareGames.length);
+    
+    // Pad shorter arrays with null
+    while (trueElos.length < maxLength) {
+        trueElos.push(null);
+        estimatedElos.push(null);
+    }
+    while (compareTrueElos.length < maxLength) {
+        compareTrueElos.push(null);
+        compareEstimatedElos.push(null);
+    }
     
     // Calculate moving averages
     const trueMA10 = movingAverage(trueElos, 10);
-    const estimatedMA10 = movingAverage(interpolatedEstimated, 10);
+    const estimatedMA10 = movingAverage(estimatedElos, 10);
+    const compareTrueMA10 = compareTrueElos.length > 0 ? movingAverage(compareTrueElos, 10) : [];
+    const compareEstimatedMA10 = compareEstimatedElos.length > 0 ? movingAverage(compareEstimatedElos, 10) : [];
     
     return {
-        labels: games.map((_, i) => i + 1),
+        labels: Array.from({ length: maxLength }, (_, i) => i + 1),
         trueElos,
-        estimatedElos: interpolatedEstimated,
-        isMissing,
+        estimatedElos,
         trueMA10,
-        estimatedMA10
+        estimatedMA10,
+        compareTrueElos,
+        compareEstimatedElos,
+        compareTrueMA10,
+        compareEstimatedMA10,
+        hasCompare: compareGames.length > 0 && compareUsername
     };
 }
 
@@ -720,73 +908,100 @@ function renderGraph() {
         eloChart.destroy();
     }
     
-    // Create point colors for estimated raw (red for missing)
-    const estimatedPointColors = data.isMissing.map(missing => 
-        missing ? "#bf3030" : "#7cb342"
-    );
+    const datasets = [
+        // Main user - Estimated ELO MA10 (prediction) - full line
+        {
+            label: `${currentUsername} - Estimated ELO (MA10)`,
+            data: data.estimatedMA10,
+            borderColor: "#7cb342",
+            backgroundColor: "transparent",
+            borderWidth: 2,
+            borderDash: [],
+            pointRadius: 0,
+            tension: 0.3,
+            order: 0,
+            hidden: !toggleMa.checked
+        },
+        // Main user - True ELO MA10 - tirets
+        {
+            label: `${currentUsername} - True ELO (MA10)`,
+            data: data.trueMA10,
+            borderColor: "#5c9ece",
+            backgroundColor: "transparent",
+            borderWidth: 2,
+            borderDash: [10, 5],
+            pointRadius: 0,
+            tension: 0.3,
+            order: 1,
+            hidden: !toggleMa.checked
+        },
+        // Main user - Estimated ELO Raw - dotted
+        {
+            label: `${currentUsername} - Estimated ELO (raw)`,
+            data: data.estimatedElos,
+            borderColor: "#7cb342",
+            backgroundColor: "transparent",
+            borderWidth: 1,
+            borderDash: [2, 5],
+            pointRadius: 2,
+            pointBackgroundColor: "#7cb342",
+            tension: 0.1,
+            order: 2,
+            hidden: !toggleRaw.checked
+        }
+    ];
     
-    const estimatedPointRadius = data.isMissing.map(missing =>
-        missing ? 5 : 3
-    );
+    // Add compare user datasets if available
+    if (data.hasCompare) {
+        datasets.push(
+            // Compare user - Estimated ELO MA10 (prediction) - full line
+            {
+                label: `${compareUsername} - Estimated ELO (MA10)`,
+                data: data.compareEstimatedMA10,
+                borderColor: "#e67e22",
+                backgroundColor: "transparent",
+                borderWidth: 2,
+                borderDash: [],
+                pointRadius: 0,
+                tension: 0.3,
+                order: 3,
+                hidden: !toggleMa.checked
+            },
+            // Compare user - True ELO MA10 - tirets
+            {
+                label: `${compareUsername} - True ELO (MA10)`,
+                data: data.compareTrueMA10,
+                borderColor: "#3498db",
+                backgroundColor: "transparent",
+                borderWidth: 2,
+                borderDash: [10, 5],
+                pointRadius: 0,
+                tension: 0.3,
+                order: 4,
+                hidden: !toggleMa.checked
+            },
+            // Compare user - Estimated ELO Raw - dotted
+            {
+                label: `${compareUsername} - Estimated ELO (raw)`,
+                data: data.compareEstimatedElos,
+                borderColor: "#e67e22",
+                backgroundColor: "transparent",
+                borderWidth: 1,
+                borderDash: [2, 5],
+                pointRadius: 2,
+                pointBackgroundColor: "#e67e22",
+                tension: 0.1,
+                order: 5,
+                hidden: !toggleRaw.checked
+            }
+        );
+    }
     
     eloChart = new Chart(ctx, {
         type: "line",
         data: {
             labels: data.labels,
-            datasets: [
-                // True ELO - Raw (dotted blue)
-                {
-                    label: "True ELO (raw)",
-                    data: data.trueElos,
-                    borderColor: "#5c9ece",
-                    backgroundColor: "transparent",
-                    borderWidth: 1,
-                    borderDash: [5, 5],
-                    pointRadius: 2,
-                    pointBackgroundColor: "#5c9ece",
-                    tension: 0.1,
-                    order: 3,
-                    hidden: !toggleRaw.checked
-                },
-                // True ELO - MA10 (solid blue)
-                {
-                    label: "True ELO (MA10)",
-                    data: data.trueMA10,
-                    borderColor: "#5c9ece",
-                    backgroundColor: "transparent",
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    tension: 0.3,
-                    order: 2,
-                    hidden: !toggleMa.checked
-                },
-                // Estimated ELO - Raw (dotted green, red for missing)
-                {
-                    label: "Estimated ELO (raw)",
-                    data: data.estimatedElos,
-                    borderColor: "#7cb342",
-                    backgroundColor: "transparent",
-                    borderWidth: 1,
-                    borderDash: [5, 5],
-                    pointRadius: estimatedPointRadius,
-                    pointBackgroundColor: estimatedPointColors,
-                    tension: 0.1,
-                    order: 1,
-                    hidden: !toggleRaw.checked
-                },
-                // Estimated ELO - MA10 (solid green)
-                {
-                    label: "Estimated ELO (MA10)",
-                    data: data.estimatedMA10,
-                    borderColor: "#7cb342",
-                    backgroundColor: "transparent",
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    tension: 0.3,
-                    order: 0,
-                    hidden: !toggleMa.checked
-                }
-            ]
+            datasets: datasets
         },
         options: {
             responsive: true,
@@ -797,21 +1012,24 @@ function renderGraph() {
             },
             plugins: {
                 legend: {
-                    display: false
+                    display: true,
+                    position: "top",
+                    labels: {
+                        color: "#bababa",
+                        usePointStyle: true,
+                        padding: 15,
+                        font: {
+                            size: 12
+                        }
+                    }
                 },
                 tooltip: {
                     callbacks: {
                         title: (items) => `Game ${items[0].label}`,
                         label: (item) => {
-                            const datasetLabel = item.dataset.label;
                             const value = item.raw;
                             if (value === null) return null;
-                            
-                            // Check if this is a missing/interpolated point
-                            if (datasetLabel === "Estimated ELO (raw)" && data.isMissing[item.dataIndex]) {
-                                return `${datasetLabel}: ${value} (interpolated)`;
-                            }
-                            return `${datasetLabel}: ${value}`;
+                            return `${item.dataset.label}: ${value}`;
                         }
                     }
                 }
