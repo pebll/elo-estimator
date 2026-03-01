@@ -151,12 +151,9 @@ def get_games(username):
     if variant == "chess960" and time_control == "15+10":
         games = [g for g in games if g["time_control"] == "900+10"]
     
-    # Check if there are more games (we fetched max+1)
-    requested_max = max_games - 1  # We added 1 earlier
-    has_more = len(games) > requested_max
-    
-    # Limit to requested max after filtering
-    games = games[:requested_max]
+    # Check if there are more games (we fetched max+1 to detect pagination)
+    has_more = len(games) > max_games
+    games = games[:max_games]
     
     # Get oldest game timestamp for pagination
     oldest_time = None

@@ -18,25 +18,22 @@
 
         <section class="search-section">
             <div class="search-box">
-                <input type="text" id="username-input" placeholder="Enter Lichess username..." autocomplete="off">
+                <div class="username-autocomplete" style="flex: 1;">
+                    <input type="text" id="username-input" placeholder="Enter Lichess username..." autocomplete="off">
+                    <div id="username-autocomplete-dropdown" class="autocomplete-dropdown hidden"></div>
+                </div>
                 <button id="search-btn">Search</button>
             </div>
             <div class="filters">
                 <div class="filter-group">
-                    <label for="variant-filter">Variant</label>
-                    <select id="variant-filter">
-                        <option value="standard">Standard</option>
-                        <option value="chess960">Chess960</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="time-filter">Time Control</label>
-                    <select id="time-filter">
-                        <option value="all">All</option>
+                    <label for="mode-filter">Mode</label>
+                    <select id="mode-filter">
                         <option value="bullet">Bullet</option>
-                        <option value="blitz">Blitz</option>
+                        <option value="blitz" selected>Blitz</option>
                         <option value="rapid">Rapid</option>
                         <option value="classical">Classical</option>
+                        <option value="960_all">960 All</option>
+                        <option value="960_15+10">960 15+10</option>
                     </select>
                 </div>
             </div>
@@ -77,8 +74,12 @@
                 <div class="compare-section">
                     <div class="compare-input-group">
                         <label for="compare-input">Compare with:</label>
-                        <input type="text" id="compare-input" placeholder="Enter Lichess username..." autocomplete="off">
+                        <div class="username-autocomplete" style="flex: 1;">
+                            <input type="text" id="compare-input" placeholder="Enter Lichess username..." autocomplete="off">
+                            <div id="compare-autocomplete-dropdown" class="autocomplete-dropdown hidden"></div>
+                        </div>
                         <button id="compare-btn">Load</button>
+                        <button id="batch-analyze-compare-btn" class="batch-btn hidden">Analyze Next 10</button>
                     </div>
                     <div class="load-more-compare-container">
                         <button id="load-more-compare-btn" class="load-more-btn hidden">Load More (+50)</button>
@@ -92,7 +93,7 @@
                     <span class="legend-item"><span class="legend-color blue"></span> True ELO</span>
                     <span class="legend-divider"></span>
                     <label class="legend-toggle">
-                        <input type="checkbox" id="toggle-raw" checked>
+                        <input type="checkbox" id="toggle-raw">
                         <span class="legend-line dotted"></span> Raw
                     </label>
                     <label class="legend-toggle">

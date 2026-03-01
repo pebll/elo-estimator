@@ -320,9 +320,10 @@ header h1 {
 
 .compare-input-group {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
-    max-width: 500px;
+    max-width: 600px;
     margin: 0 auto;
 }
 
@@ -368,6 +369,42 @@ header h1 {
     background-color: #7cb8e0;
 }
 
+/* Username autocomplete dropdown */
+.username-autocomplete {
+    position: relative;
+}
+
+.username-autocomplete .autocomplete-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 2px;
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    z-index: 100;
+    box-shadow: 0 4px 12px var(--shadow);
+}
+
+.username-autocomplete .autocomplete-dropdown.hidden {
+    display: none;
+}
+
+.username-autocomplete .autocomplete-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    color: var(--text-bright);
+    font-size: 0.95rem;
+}
+
+.username-autocomplete .autocomplete-item:hover,
+.username-autocomplete .autocomplete-item.selected {
+    background-color: var(--bg-hover);
+}
+
 .load-more-compare-container {
     display: flex;
     justify-content: center;
@@ -377,6 +414,16 @@ header h1 {
 .graph-container {
     height: 400px;
     margin-bottom: 20px;
+}
+
+/* Chart.js legend: 3 entries per line, grouped by player */
+.graph-view ul[style*="flex"],
+.graph-view .chartjs-legend ul,
+#elo-chart + * ul {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px 20px;
+    list-style: none;
 }
 
 .graph-legend {
