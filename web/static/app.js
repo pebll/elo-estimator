@@ -11,6 +11,12 @@ let oldestGameTime = null;
 let pendingJobIds = [];
 let batchCancelled = false;
 
+// Compare user state
+let compareGames = [];
+let compareUsername = "";
+let compareHasMoreGames = false;
+let compareOldestGameTime = null;
+
 // DOM Elements
 const usernameInput = document.getElementById("username-input");
 const searchBtn = document.getElementById("search-btn"); const errorMessage = document.getElementById("error-message");
@@ -19,8 +25,7 @@ const gamesList = document.getElementById("games-list");
 const displayUsername = document.getElementById("display-username");
 const loadingOverlay = document.getElementById("loading-overlay");
 const loadingText = document.getElementById("loading-text");
-const variantFilter = document.getElementById("variant-filter");
-const timeFilter = document.getElementById("time-filter");
+const modeFilter = document.getElementById("mode-filter");
 const listViewBtn = document.getElementById("list-view-btn");
 const graphViewBtn = document.getElementById("graph-view-btn");
 const listView = document.getElementById("list-view");
@@ -34,38 +39,190 @@ const loadMoreBtn = document.getElementById("load-more-btn");
 const queueIndicator = document.getElementById("queue-indicator");
 const queueCount = document.getElementById("queue-count");
 const batchCancelBtn = document.getElementById("batch-cancel-btn");
-const toggleRaw = document.getElementById("toggle-raw");
-const toggleMa = document.getElementById("toggle-ma");
+const toggleMaEstimated = document.getElementById("toggle-ma-estimated");
+const toggleMaTrue = document.getElementById("toggle-ma-true");
+const toggleRawEstimated = document.getElementById("toggle-raw-estimated");
+
+// Ensure default toggle state: MA on, Raw off
+if (toggleMaEstimated) toggleMaEstimated.checked = true;
+if (toggleMaTrue) toggleMaTrue.checked = true;
+if (toggleRawEstimated) toggleRawEstimated.checked = false;
+const compareInput = document.getElementById("compare-input");
+const compareBtn = document.getElementById("compare-btn");
+const loadMoreCompareBtn = document.getElementById("load-more-compare-btn");
+const batchAnalyzeCompareBtn = document.getElementById("batch-analyze-compare-btn");
+const usernameAutocompleteDropdown = document.getElementById("username-autocomplete-dropdown");
+const compareAutocompleteDropdown = document.getElementById("compare-autocomplete-dropdown");
+
+// Storage keys
+const STORAGE_MODE = "elo-estimator-mode";
+const STORAGE_USERNAMES = "elo-estimator-usernames";
+const MAX_STORED_USERNAMES = 50;
 
 // Event Listeners
 searchBtn.addEventListener("click", searchGames);
 batchAnalyzeBtn.addEventListener("click", batchAnalyze);
 loadMoreBtn.addEventListener("click", loadMoreGames);
 batchCancelBtn.addEventListener("click", cancelBatchAnalysis);
-toggleRaw.addEventListener("change", updateChartVisibility);
-toggleMa.addEventListener("change", updateChartVisibility);
+if (toggleMaEstimated) toggleMaEstimated.addEventListener("change", updateChartVisibility);
+if (toggleMaTrue) toggleMaTrue.addEventListener("change", updateChartVisibility);
+if (toggleRawEstimated) toggleRawEstimated.addEventListener("change", updateChartVisibility);
+compareBtn.addEventListener("click", loadCompareUser);
+loadMoreCompareBtn.addEventListener("click", loadMoreCompareGames);
+compareInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") loadCompareUser();
+});
 
 function updateChartVisibility() {
     if (!eloChart) return;
     
-    const showRaw = toggleRaw.checked;
-    const showMa = toggleMa.checked;
+    const showMaEst = toggleMaEstimated ? toggleMaEstimated.checked : true;
+    const showMaTrue = toggleMaTrue ? toggleMaTrue.checked : true;
+    const showRawEst = toggleRawEstimated ? toggleRawEstimated.checked : true;
     
-    // Datasets: 0=True raw, 1=True MA, 2=Est raw, 3=Est MA
-    eloChart.data.datasets[0].hidden = !showRaw;  // True ELO raw
-    eloChart.data.datasets[2].hidden = !showRaw;  // Estimated ELO raw
-    eloChart.data.datasets[1].hidden = !showMa;   // True ELO MA
-    eloChart.data.datasets[3].hidden = !showMa;   // Estimated ELO MA
+    // Datasets order (for main user):
+    // 0 = Estimated MA (prediction) - full line
+    // 1 = True MA - dashed
+    // 2 = Estimated raw - dotted
+    // For compare user (if exists):
+    // 3 = Compare Estimated MA - full line
+    // 4 = Compare True MA - dashed
+    // 5 = Compare Estimated raw - dotted
+    
+    // Main user
+    if (eloChart.data.datasets[0]) {
+        eloChart.data.datasets[0].hidden = !showMaEst;   // Estimated ELO MA (prediction)
+    }
+    if (eloChart.data.datasets[1]) {
+        eloChart.data.datasets[1].hidden = !showMaTrue;  // True ELO MA
+    }
+    if (eloChart.data.datasets[2]) {
+        eloChart.data.datasets[2].hidden = !showRawEst;  // Estimated ELO raw
+    }
+    
+    // Compare user (if present)
+    if (eloChart.data.datasets[3]) {
+        eloChart.data.datasets[3].hidden = !showMaEst;   // Compare Estimated ELO MA
+    }
+    if (eloChart.data.datasets[4]) {
+        eloChart.data.datasets[4].hidden = !showMaTrue;  // Compare True ELO MA
+    }
+    if (eloChart.data.datasets[5]) {
+        eloChart.data.datasets[5].hidden = !showRawEst;  // Compare Estimated ELO raw
+    }
     
     eloChart.update();
 }
 usernameInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") searchGames();
 });
-variantFilter.addEventListener("change", onVariantChange);
-timeFilter.addEventListener("change", onFilterChange);
+batchAnalyzeCompareBtn.addEventListener("click", batchAnalyzeCompare);
+modeFilter.addEventListener("change", onModeChange);
 listViewBtn.addEventListener("click", () => switchView("list"));
 graphViewBtn.addEventListener("click", () => switchView("graph"));
+
+// Username autocomplete
+setupUsernameAutocomplete(usernameInput, usernameAutocompleteDropdown, searchGames);
+setupUsernameAutocomplete(compareInput, compareAutocompleteDropdown, loadCompareUser);
+
+// Restore last mode from localStorage
+const savedMode = localStorage.getItem(STORAGE_MODE);
+if (savedMode && modeFilter.querySelector(`option[value="${savedMode}"]`)) {
+    modeFilter.value = savedMode;
+}
+
+function getStoredUsernames() {
+    try {
+        const raw = localStorage.getItem(STORAGE_USERNAMES);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+function addUsernameToHistory(username) {
+    if (!username) return;
+    const key = username.trim().toLowerCase();
+    if (!key) return;
+    let usernames = getStoredUsernames();
+    usernames = usernames.filter(u => u.toLowerCase() !== key);
+    usernames.unshift(username.trim());
+    if (usernames.length > MAX_STORED_USERNAMES) usernames = usernames.slice(0, MAX_STORED_USERNAMES);
+    localStorage.setItem(STORAGE_USERNAMES, JSON.stringify(usernames));
+}
+
+function setupUsernameAutocomplete(inputEl, dropdownEl, onSelect) {
+    let selectedIndex = -1;
+    let matches = [];
+
+    dropdownEl.addEventListener("click", (e) => {
+        const item = e.target.closest(".autocomplete-item");
+        if (item) {
+            const idx = parseInt(item.dataset.index, 10);
+            if (matches[idx]) {
+                inputEl.value = matches[idx];
+                dropdownEl.classList.add("hidden");
+                onSelect();
+            }
+        }
+    });
+
+    function showDropdown(prefix) {
+        matches = getStoredUsernames().filter(u => 
+            u.toLowerCase().startsWith(prefix.toLowerCase())
+        ).slice(0, 10);
+        selectedIndex = -1;
+        if (matches.length === 0) {
+            dropdownEl.classList.add("hidden");
+            return;
+        }
+        dropdownEl.innerHTML = matches.map((u, i) =>
+            `<div class="autocomplete-item" data-index="${i}">${escapeHtml(u)}</div>`
+        ).join("");
+        dropdownEl.classList.remove("hidden");
+    }
+
+    function hideDropdown() {
+        setTimeout(() => dropdownEl.classList.add("hidden"), 150);
+    }
+
+    inputEl.addEventListener("input", () => {
+        const val = inputEl.value.trim();
+        if (val.length > 0) showDropdown(val);
+        else dropdownEl.classList.add("hidden");
+    });
+
+    inputEl.addEventListener("focus", () => {
+        const val = inputEl.value.trim();
+        if (val.length > 0) showDropdown(val);
+    });
+
+    inputEl.addEventListener("keydown", (e) => {
+        if (!dropdownEl.classList.contains("hidden")) {
+            const items = dropdownEl.querySelectorAll(".autocomplete-item");
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                items.forEach((it, i) => it.classList.toggle("selected", i === selectedIndex));
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, -1);
+                items.forEach((it, i) => it.classList.toggle("selected", i === selectedIndex));
+            } else if (e.key === "Enter" && selectedIndex >= 0 && matches[selectedIndex]) {
+                e.preventDefault();
+                inputEl.value = matches[selectedIndex];
+                dropdownEl.classList.add("hidden");
+                onSelect();
+            } else if (e.key === "Escape") {
+                dropdownEl.classList.add("hidden");
+            }
+        }
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!inputEl.contains(e.target) && !dropdownEl.contains(e.target)) hideDropdown();
+    });
+}
 
 function switchView(view) {
     currentView = view;
@@ -84,32 +241,19 @@ function switchView(view) {
     }
 }
 
-function onVariantChange() {
-    const variant = variantFilter.value;
-    
-    if (variant === "chess960") {
-        timeFilter.innerHTML = `
-            <option value="all">All</option>
-            <option value="15+10">15+10</option>
-        `;
-    } else {
-        timeFilter.innerHTML = `
-            <option value="all">All</option>
-            <option value="bullet">Bullet</option>
-            <option value="blitz">Blitz</option>
-            <option value="rapid">Rapid</option>
-            <option value="classical">Classical</option>
-        `;
-    }
-    
-    if (currentUsername) {
-        searchGames();
-    }
+function getVariantAndTimeControl() {
+    const mode = modeFilter.value;
+    if (mode === "960_all") return { variant: "chess960", time_control: "all" };
+    if (mode === "960_15+10") return { variant: "chess960", time_control: "15+10" };
+    return { variant: "standard", time_control: mode };
 }
 
-function onFilterChange() {
-    if (currentUsername) {
-        searchGames();
+function onModeChange() {
+    localStorage.setItem(STORAGE_MODE, modeFilter.value);
+    if (currentUsername) searchGames();
+    if (compareUsername) {
+        compareInput.value = compareUsername;
+        loadCompareUser();
     }
 }
 
@@ -127,14 +271,21 @@ async function searchGames() {
     currentGames = [];
     hasMoreGames = true;
     oldestGameTime = null;
+    
+    // Clear compare data when main user changes
+    compareGames = [];
+    compareUsername = "";
+    compareHasMoreGames = false;
+    compareOldestGameTime = null;
+    compareInput.value = "";
+    updateLoadMoreCompareButton();
 
-    const variant = variantFilter.value;
-    const timeControl = timeFilter.value;
+    const { variant, time_control: timeControl } = getVariantAndTimeControl();
 
     try {
         const params = new URLSearchParams({
             max: 50,
-            variant: variant,
+            variant,
             time_control: timeControl
         });
         
@@ -150,6 +301,7 @@ async function searchGames() {
         hasMoreGames = data.has_more;
         oldestGameTime = data.oldest_time;
         
+        addUsernameToHistory(username);
         displayResults();
     } catch (error) {
         showError(error.message);
@@ -163,13 +315,12 @@ async function loadMoreGames() {
     
     showLoading("Fetching more games...");
 
-    const variant = variantFilter.value;
-    const timeControl = timeFilter.value;
+    const { variant, time_control: timeControl } = getVariantAndTimeControl();
 
     try {
         const params = new URLSearchParams({
             max: 50,
-            variant: variant,
+            variant,
             time_control: timeControl,
             until: oldestGameTime
         });
@@ -206,6 +357,125 @@ async function loadMoreGames() {
         showError(error.message);
     } finally {
         hideLoading();
+    }
+}
+
+async function loadCompareUser() {
+    const username = compareInput.value.trim();
+    if (!username) {
+        showError("Please enter a username to compare");
+        return;
+    }
+
+    hideError();
+    showLoading("Fetching games for comparison...");
+
+    // Reset state for new compare search
+    compareGames = [];
+    compareHasMoreGames = true;
+    compareOldestGameTime = null;
+
+    const { variant, time_control: timeControl } = getVariantAndTimeControl();
+
+    try {
+        const params = new URLSearchParams({
+            max: 50,
+            variant,
+            time_control: timeControl
+        });
+        
+        const response = await fetch(`${API_BASE}/api/games/${encodeURIComponent(username)}?${params}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch games");
+        }
+
+        compareGames = data.games;
+        compareUsername = data.username;
+        compareHasMoreGames = data.has_more;
+        compareOldestGameTime = data.oldest_time;
+        
+        addUsernameToHistory(username);
+        updateLoadMoreCompareButton();
+        renderGraph();
+    } catch (error) {
+        showError(error.message);
+        compareGames = [];
+        compareUsername = "";
+        compareHasMoreGames = false;
+        compareOldestGameTime = null;
+        updateLoadMoreCompareButton();
+        renderGraph();
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadMoreCompareGames() {
+    if (!compareHasMoreGames || !compareOldestGameTime || !compareUsername) return;
+    
+    showLoading("Fetching more games for comparison...");
+
+    const { variant, time_control: timeControl } = getVariantAndTimeControl();
+
+    try {
+        const params = new URLSearchParams({
+            max: 50,
+            variant,
+            time_control: timeControl,
+            until: compareOldestGameTime
+        });
+        
+        const response = await fetch(`${API_BASE}/api/games/${encodeURIComponent(compareUsername)}?${params}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch games");
+        }
+
+        // Append new games
+        compareGames = [...compareGames, ...data.games];
+        compareHasMoreGames = data.has_more;
+        compareOldestGameTime = data.oldest_time;
+        
+        updateLoadMoreCompareButton();
+        
+        // Update graph
+        if (currentView === "graph") {
+            renderGraph();
+        }
+        
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+function updateLoadMoreCompareButton() {
+    if (compareHasMoreGames && compareUsername) {
+        loadMoreCompareBtn.classList.remove("hidden");
+    } else {
+        loadMoreCompareBtn.classList.add("hidden");
+    }
+    updateBatchAnalyzeCompareButton();
+}
+
+function updateBatchAnalyzeCompareButton() {
+    const unanalyzed = compareGames.filter(g => g.cached_white_elo === undefined).length;
+    if (compareUsername && unanalyzed > 0) {
+        batchAnalyzeCompareBtn.classList.remove("hidden");
+        batchAnalyzeCompareBtn.textContent = `Analyze Next ${Math.min(unanalyzed, 10)}`;
+        batchAnalyzeCompareBtn.disabled = false;
+        batchAnalyzeCompareBtn.classList.remove("disabled");
+    } else if (compareUsername && unanalyzed === 0) {
+        batchAnalyzeCompareBtn.classList.remove("hidden");
+        batchAnalyzeCompareBtn.textContent = "All Analyzed ✓";
+        batchAnalyzeCompareBtn.disabled = true;
+        batchAnalyzeCompareBtn.classList.add("disabled");
+    } else {
+        batchAnalyzeCompareBtn.classList.add("hidden");
     }
 }
 
@@ -501,6 +771,69 @@ async function batchAnalyze() {
     }
 }
 
+async function batchAnalyzeCompare() {
+    const unanalyzedIndices = [];
+    for (let i = 0; i < compareGames.length && unanalyzedIndices.length < 10; i++) {
+        if (compareGames[i].cached_white_elo === undefined) {
+            unanalyzedIndices.push(i);
+        }
+    }
+    if (unanalyzedIndices.length === 0) return;
+
+    const total = unanalyzedIndices.length;
+    let completed = 0;
+    pendingJobIds = [];
+    batchCancelled = false;
+
+    batchAnalyzeCompareBtn.classList.add("hidden");
+    batchProgress.classList.remove("hidden");
+    batchProgress.style.marginTop = "15px";
+    updateBatchProgress(completed, total, "Submitting...");
+
+    for (const index of unanalyzedIndices) {
+        if (batchCancelled) break;
+        const game = compareGames[index];
+        try {
+            const response = await fetch(`${API_BASE}/api/analyze`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pgn: game.pgn, game_id: game.id })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                completed++;
+                updateBatchProgress(completed, total);
+                continue;
+            }
+            if (data.cached) {
+                game.cached_white_elo = data.result.white_elo;
+                game.cached_black_elo = data.result.black_elo;
+                completed++;
+                updateBatchProgress(completed, total);
+                continue;
+            }
+            pendingJobIds.push(data.job_id);
+            const result = await pollBatchJobStatus(data.job_id, completed, total);
+            pendingJobIds = pendingJobIds.filter(id => id !== data.job_id);
+            if (result && !result.error && !result.cancelled) {
+                game.cached_white_elo = result.white_elo;
+                game.cached_black_elo = result.black_elo;
+            }
+        } catch (e) {
+            console.error("Compare batch error:", e);
+        }
+        completed++;
+        updateBatchProgress(completed, total);
+    }
+
+    batchProgress.classList.add("hidden");
+    batchProgress.style.marginTop = "";
+    pendingJobIds = [];
+    batchCancelled = false;
+    updateBatchAnalyzeCompareButton();
+    if (currentView === "graph") renderGraph();
+}
+
 async function pollBatchJobStatus(jobId, completed, total) {
     while (true) {
         // Check if cancelled
@@ -613,7 +946,6 @@ function prepareGraphData() {
     
     const trueElos = [];
     const estimatedElos = [];
-    const isMissing = [];
     
     games.forEach((game, i) => {
         const isUserWhite = game.white.toLowerCase() === currentUsername.toLowerCase();
@@ -622,31 +954,71 @@ function prepareGraphData() {
         const trueElo = parseInt(isUserWhite ? game.white_elo : game.black_elo) || null;
         trueElos.push(trueElo);
         
-        // Estimated ELO (may be missing)
+        // Estimated ELO - if missing, use true elo instead of interpolating
         if (game.cached_white_elo !== undefined) {
             const estElo = isUserWhite ? game.cached_white_elo : game.cached_black_elo;
             estimatedElos.push(estElo);
-            isMissing.push(false);
         } else {
-            estimatedElos.push(null);
-            isMissing.push(true);
+            // Use true elo if estimated is not available
+            estimatedElos.push(trueElo);
         }
     });
     
-    // Interpolate missing estimated ELOs
-    const interpolatedEstimated = interpolateValues(estimatedElos);
+    // Prepare compare user data if available
+    let compareTrueElos = [];
+    let compareEstimatedElos = [];
+    
+    if (compareGames.length > 0 && compareUsername) {
+        const compareGamesReversed = [...compareGames].reverse();
+        
+        compareGamesReversed.forEach((game, i) => {
+            const isUserWhite = game.white.toLowerCase() === compareUsername.toLowerCase();
+            
+            // True ELO from game data
+            const trueElo = parseInt(isUserWhite ? game.white_elo : game.black_elo) || null;
+            compareTrueElos.push(trueElo);
+            
+            // Estimated ELO - if missing, use true elo instead of interpolating
+            if (game.cached_white_elo !== undefined) {
+                const estElo = isUserWhite ? game.cached_white_elo : game.cached_black_elo;
+                compareEstimatedElos.push(estElo);
+            } else {
+                // Use true elo if estimated is not available
+                compareEstimatedElos.push(trueElo);
+            }
+        });
+    }
+    
+    // Match length to longest dataset
+    const maxLength = Math.max(games.length, compareGames.length);
+    
+    // Pad shorter arrays with null
+    while (trueElos.length < maxLength) {
+        trueElos.push(null);
+        estimatedElos.push(null);
+    }
+    while (compareTrueElos.length < maxLength) {
+        compareTrueElos.push(null);
+        compareEstimatedElos.push(null);
+    }
     
     // Calculate moving averages
     const trueMA10 = movingAverage(trueElos, 10);
-    const estimatedMA10 = movingAverage(interpolatedEstimated, 10);
+    const estimatedMA10 = movingAverage(estimatedElos, 10);
+    const compareTrueMA10 = compareTrueElos.length > 0 ? movingAverage(compareTrueElos, 10) : [];
+    const compareEstimatedMA10 = compareEstimatedElos.length > 0 ? movingAverage(compareEstimatedElos, 10) : [];
     
     return {
-        labels: games.map((_, i) => i + 1),
+        labels: Array.from({ length: maxLength }, (_, i) => i + 1),
         trueElos,
-        estimatedElos: interpolatedEstimated,
-        isMissing,
+        estimatedElos,
         trueMA10,
-        estimatedMA10
+        estimatedMA10,
+        compareTrueElos,
+        compareEstimatedElos,
+        compareTrueMA10,
+        compareEstimatedMA10,
+        hasCompare: compareGames.length > 0 && compareUsername
     };
 }
 
@@ -712,6 +1084,38 @@ function movingAverage(values, window) {
     return result;
 }
 
+const htmlLegendPlugin = {
+    id: "htmlLegend",
+    afterUpdate(chart, _args, opts) {
+        const container = document.getElementById(opts.containerID);
+        if (!container) return;
+        let ul = container.querySelector("ul");
+        if (!ul) {
+            ul = document.createElement("ul");
+            container.appendChild(ul);
+        }
+        ul.innerHTML = "";
+        const items = chart.options.plugins.legend.labels.generateLabels(chart);
+        items.forEach((item) => {
+            const dataset = chart.data.datasets[item.datasetIndex];
+            const color = (dataset && dataset.borderColor) || item.strokeStyle || item.fillStyle;
+            const li = document.createElement("li");
+            li.classList.toggle("hidden-item", item.hidden);
+            li.style.cursor = "default";
+            const box = document.createElement("span");
+            box.className = "legend-box";
+            box.style.background = color;
+            box.style.borderColor = color;
+            box.style.borderWidth = "1px";
+            box.style.borderStyle = "solid";
+            const text = document.createTextNode(item.text);
+            li.appendChild(box);
+            li.appendChild(text);
+            ul.appendChild(li);
+        });
+    }
+};
+
 function renderGraph() {
     const data = prepareGraphData();
     const ctx = document.getElementById("elo-chart").getContext("2d");
@@ -720,74 +1124,101 @@ function renderGraph() {
         eloChart.destroy();
     }
     
-    // Create point colors for estimated raw (red for missing)
-    const estimatedPointColors = data.isMissing.map(missing => 
-        missing ? "#bf3030" : "#7cb342"
-    );
-    
-    const estimatedPointRadius = data.isMissing.map(missing =>
-        missing ? 5 : 3
-    );
+    const showMaEst = toggleMaEstimated ? toggleMaEstimated.checked : true;
+    const showMaTrue = toggleMaTrue ? toggleMaTrue.checked : true;
+    const showRawEst = toggleRawEstimated ? toggleRawEstimated.checked : true;
+
+    const datasets = [
+        // Main user - blue/green: Estimated (green), True (blue), Raw (green)
+        {
+            label: `${currentUsername} - Estimated (MA10)`,
+            data: data.estimatedMA10,
+            borderColor: "#7cb342",
+            backgroundColor: "transparent",
+            borderWidth: 2,
+            borderDash: [],
+            pointRadius: 0,
+            tension: 0.3,
+            order: 0,
+            hidden: !showMaEst
+        },
+        {
+            label: `${currentUsername} - True (MA10)`,
+            data: data.trueMA10,
+            borderColor: "#5c9ece",
+            backgroundColor: "transparent",
+            borderWidth: 2,
+            borderDash: [10, 5],
+            pointRadius: 0,
+            tension: 0.3,
+            order: 1,
+            hidden: !showMaTrue
+        },
+        {
+            label: `${currentUsername} - Raw`,
+            data: data.estimatedElos,
+            borderColor: "#7cb342",
+            backgroundColor: "transparent",
+            borderWidth: 1,
+            borderDash: [2, 5],
+            pointRadius: 2,
+            pointBackgroundColor: "#7cb342",
+            tension: 0.1,
+            order: 2,
+            hidden: !showRawEst
+        }
+    ];
+
+    if (data.hasCompare) {
+        datasets.push(
+            // Compare user - orange/red: Estimated (orange), True (red), Raw (orange)
+            {
+                label: `${compareUsername} - Estimated (MA10)`,
+                data: data.compareEstimatedMA10,
+                borderColor: "#e67e22",
+                backgroundColor: "transparent",
+                borderWidth: 2,
+                borderDash: [],
+                pointRadius: 0,
+                tension: 0.3,
+                order: 3,
+                hidden: !showMaEst
+            },
+            {
+                label: `${compareUsername} - True (MA10)`,
+                data: data.compareTrueMA10,
+                borderColor: "#e74c3c",
+                backgroundColor: "transparent",
+                borderWidth: 2,
+                borderDash: [10, 5],
+                pointRadius: 0,
+                tension: 0.3,
+                order: 4,
+                hidden: !showMaTrue
+            },
+            {
+                label: `${compareUsername} - Raw`,
+                data: data.compareEstimatedElos,
+                borderColor: "#e67e22",
+                backgroundColor: "transparent",
+                borderWidth: 1,
+                borderDash: [2, 5],
+                pointRadius: 2,
+                pointBackgroundColor: "#e67e22",
+                tension: 0.1,
+                order: 5,
+                hidden: !showRawEst
+            }
+        );
+    }
     
     eloChart = new Chart(ctx, {
         type: "line",
         data: {
             labels: data.labels,
-            datasets: [
-                // True ELO - Raw (dotted blue)
-                {
-                    label: "True ELO (raw)",
-                    data: data.trueElos,
-                    borderColor: "#5c9ece",
-                    backgroundColor: "transparent",
-                    borderWidth: 1,
-                    borderDash: [5, 5],
-                    pointRadius: 2,
-                    pointBackgroundColor: "#5c9ece",
-                    tension: 0.1,
-                    order: 3,
-                    hidden: !toggleRaw.checked
-                },
-                // True ELO - MA10 (solid blue)
-                {
-                    label: "True ELO (MA10)",
-                    data: data.trueMA10,
-                    borderColor: "#5c9ece",
-                    backgroundColor: "transparent",
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    tension: 0.3,
-                    order: 2,
-                    hidden: !toggleMa.checked
-                },
-                // Estimated ELO - Raw (dotted green, red for missing)
-                {
-                    label: "Estimated ELO (raw)",
-                    data: data.estimatedElos,
-                    borderColor: "#7cb342",
-                    backgroundColor: "transparent",
-                    borderWidth: 1,
-                    borderDash: [5, 5],
-                    pointRadius: estimatedPointRadius,
-                    pointBackgroundColor: estimatedPointColors,
-                    tension: 0.1,
-                    order: 1,
-                    hidden: !toggleRaw.checked
-                },
-                // Estimated ELO - MA10 (solid green)
-                {
-                    label: "Estimated ELO (MA10)",
-                    data: data.estimatedMA10,
-                    borderColor: "#7cb342",
-                    backgroundColor: "transparent",
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    tension: 0.3,
-                    order: 0,
-                    hidden: !toggleMa.checked
-                }
-            ]
+            datasets: datasets
         },
+        plugins: [htmlLegendPlugin],
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -796,22 +1227,23 @@ function renderGraph() {
                 mode: "index"
             },
             plugins: {
+                htmlLegend: { containerID: "chart-legend-container" },
                 legend: {
-                    display: false
+                    display: false,
+                    labels: {
+                        color: "#bababa",
+                        usePointStyle: true,
+                        padding: 15,
+                        font: { size: 12 }
+                    }
                 },
                 tooltip: {
                     callbacks: {
                         title: (items) => `Game ${items[0].label}`,
                         label: (item) => {
-                            const datasetLabel = item.dataset.label;
                             const value = item.raw;
                             if (value === null) return null;
-                            
-                            // Check if this is a missing/interpolated point
-                            if (datasetLabel === "Estimated ELO (raw)" && data.isMissing[item.dataIndex]) {
-                                return `${datasetLabel}: ${value} (interpolated)`;
-                            }
-                            return `${datasetLabel}: ${value}`;
+                            return `${item.dataset.label}: ${value}`;
                         }
                     }
                 }

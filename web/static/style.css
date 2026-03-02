@@ -312,9 +312,143 @@ header h1 {
     padding: 20px;
 }
 
+.compare-section {
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.compare-input-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.compare-input-group label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.compare-input-group input {
+    flex: 1;
+    padding: 10px 14px;
+    font-size: 0.95rem;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-bright);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.compare-input-group input:focus {
+    border-color: var(--accent-green);
+}
+
+.compare-input-group input::placeholder {
+    color: var(--text-secondary);
+}
+
+.compare-input-group button {
+    padding: 10px 20px;
+    font-size: 0.95rem;
+    background-color: var(--accent-blue);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.compare-input-group button:hover {
+    background-color: #7cb8e0;
+}
+
+/* Username autocomplete dropdown */
+.username-autocomplete {
+    position: relative;
+}
+
+.username-autocomplete .autocomplete-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 2px;
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    z-index: 100;
+    box-shadow: 0 4px 12px var(--shadow);
+}
+
+.username-autocomplete .autocomplete-dropdown.hidden {
+    display: none;
+}
+
+.username-autocomplete .autocomplete-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    color: var(--text-bright);
+    font-size: 0.95rem;
+}
+
+.username-autocomplete .autocomplete-item:hover,
+.username-autocomplete .autocomplete-item.selected {
+    background-color: var(--bg-hover);
+}
+
+.load-more-compare-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 15px;
+}
+
 .graph-container {
     height: 400px;
     margin-bottom: 20px;
+}
+
+/* Chart legend: 2 rows × 3 columns (3 entries per line, grouped by player) */
+.chart-legend-container {
+    margin-bottom: 15px;
+}
+
+.chart-legend-container ul {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px 15px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.chart-legend-container li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.chart-legend-container li .legend-box {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    border-radius: 3px;
+}
+
+.chart-legend-container li.hidden-item {
+    text-decoration: line-through;
+    opacity: 0.6;
 }
 
 .graph-legend {
@@ -324,32 +458,6 @@ header h1 {
     gap: 20px;
     padding-top: 15px;
     border-top: 1px solid var(--border-color);
-}
-
-.legend-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-}
-
-.legend-color {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-}
-
-.legend-color.green {
-    background-color: #7cb342;
-}
-
-.legend-color.blue {
-    background-color: #5c9ece;
-}
-
-.legend-color.red {
-    background-color: #bf3030;
 }
 
 .legend-line {
@@ -367,15 +475,18 @@ header h1 {
     );
 }
 
-.legend-line.solid {
-    background-color: var(--text-secondary);
+.legend-line.dashed {
+    background: repeating-linear-gradient(
+        to right,
+        var(--text-secondary),
+        var(--text-secondary) 8px,
+        transparent 8px,
+        transparent 16px
+    );
 }
 
-.legend-divider {
-    width: 1px;
-    height: 16px;
-    background-color: var(--border-color);
-    margin: 0 8px;
+.legend-line.solid {
+    background-color: var(--text-secondary);
 }
 
 .legend-toggle {
