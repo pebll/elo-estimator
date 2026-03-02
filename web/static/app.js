@@ -1,0 +1,1368 @@
+// Elo Estimator Frontend Application
+
+const API_BASE = "/elo-estimator";
+
+let currentGames = [];
+let currentUsername = "";
+let currentView = "list";
+let eloChart = null;
+let hasMoreGames = true;
+let oldestGameTime = null;
+let pendingJobIds = [];
+let batchCancelled = false;
+
+// Compare user state
+let compareGames = [];
+let compareUsername = "";
+let compareHasMoreGames = false;
+let compareOldestGameTime = null;
+
+// DOM Elements
+const usernameInput = document.getElementById("username-input");
+const searchBtn = document.getElementById("search-btn"); const errorMessage = document.getElementById("error-message");
+const resultsSection = document.getElementById("results-section");
+const gamesList = document.getElementById("games-list");
+const displayUsername = document.getElementById("display-username");
+const loadingOverlay = document.getElementById("loading-overlay");
+const loadingText = document.getElementById("loading-text");
+const modeFilter = document.getElementById("mode-filter");
+const listViewBtn = document.getElementById("list-view-btn");
+const graphViewBtn = document.getElementById("graph-view-btn");
+const listView = document.getElementById("list-view");
+const graphView = document.getElementById("graph-view");
+const batchAnalyzeBtn = document.getElementById("batch-analyze-btn");
+const batchProgress = document.getElementById("batch-progress");
+const progressText = document.getElementById("progress-text");
+const progressPercent = document.getElementById("progress-percent");
+const progressFill = document.getElementById("progress-fill");
+const loadMoreBtn = document.getElementById("load-more-btn");
+const queueIndicator = document.getElementById("queue-indicator");
+const queueCount = document.getElementById("queue-count");
+const batchCancelBtn = document.getElementById("batch-cancel-btn");
+const toggleMaEstimated = document.getElementById("toggle-ma-estimated");
+const toggleMaTrue = document.getElementById("toggle-ma-true");
+const toggleRawEstimated = document.getElementById("toggle-raw-estimated");
+
+// Ensure default toggle state: MA on, Raw off
+if (toggleMaEstimated) toggleMaEstimated.checked = true;
+if (toggleMaTrue) toggleMaTrue.checked = true;
+if (toggleRawEstimated) toggleRawEstimated.checked = false;
+const compareInput = document.getElementById("compare-input");
+const compareBtn = document.getElementById("compare-btn");
+const loadMoreCompareBtn = document.getElementById("load-more-compare-btn");
+const batchAnalyzeCompareBtn = document.getElementById("batch-analyze-compare-btn");
+const usernameAutocompleteDropdown = document.getElementById("username-autocomplete-dropdown");
+const compareAutocompleteDropdown = document.getElementById("compare-autocomplete-dropdown");
+
+// Storage keys
+const STORAGE_MODE = "elo-estimator-mode";
+const STORAGE_USERNAMES = "elo-estimator-usernames";
+const MAX_STORED_USERNAMES = 50;
+
+// Event Listeners
+searchBtn.addEventListener("click", searchGames);
+batchAnalyzeBtn.addEventListener("click", batchAnalyze);
+loadMoreBtn.addEventListener("click", loadMoreGames);
+batchCancelBtn.addEventListener("click", cancelBatchAnalysis);
+if (toggleMaEstimated) toggleMaEstimated.addEventListener("change", updateChartVisibility);
+if (toggleMaTrue) toggleMaTrue.addEventListener("change", updateChartVisibility);
+if (toggleRawEstimated) toggleRawEstimated.addEventListener("change", updateChartVisibility);
+compareBtn.addEventListener("click", loadCompareUser);
+loadMoreCompareBtn.addEventListener("click", loadMoreCompareGames);
+compareInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") loadCompareUser();
+});
+
+function updateChartVisibility() {
+    if (!eloChart) return;
+    
+    const showMaEst = toggleMaEstimated ? toggleMaEstimated.checked : true;
+    const showMaTrue = toggleMaTrue ? toggleMaTrue.checked : true;
+    const showRawEst = toggleRawEstimated ? toggleRawEstimated.checked : true;
+    
+    // Datasets order (for main user):
+    // 0 = Estimated MA (prediction) - full line
+    // 1 = True MA - dashed
+    // 2 = Estimated raw - dotted
+    // For compare user (if exists):
+    // 3 = Compare Estimated MA - full line
+    // 4 = Compare True MA - dashed
+    // 5 = Compare Estimated raw - dotted
+    
+    // Main user
+    if (eloChart.data.datasets[0]) {
+        eloChart.data.datasets[0].hidden = !showMaEst;   // Estimated ELO MA (prediction)
+    }
+    if (eloChart.data.datasets[1]) {
+        eloChart.data.datasets[1].hidden = !showMaTrue;  // True ELO MA
+    }
+    if (eloChart.data.datasets[2]) {
+        eloChart.data.datasets[2].hidden = !showRawEst;  // Estimated ELO raw
+    }
+    
+    // Compare user (if present)
+    if (eloChart.data.datasets[3]) {
+        eloChart.data.datasets[3].hidden = !showMaEst;   // Compare Estimated ELO MA
+    }
+    if (eloChart.data.datasets[4]) {
+        eloChart.data.datasets[4].hidden = !showMaTrue;  // Compare True ELO MA
+    }
+    if (eloChart.data.datasets[5]) {
+        eloChart.data.datasets[5].hidden = !showRawEst;  // Compare Estimated ELO raw
+    }
+    
+    eloChart.update();
+}
+usernameInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") searchGames();
+});
+batchAnalyzeCompareBtn.addEventListener("click", batchAnalyzeCompare);
+modeFilter.addEventListener("change", onModeChange);
+listViewBtn.addEventListener("click", () => switchView("list"));
+graphViewBtn.addEventListener("click", () => switchView("graph"));
+
+// Username autocomplete
+setupUsernameAutocomplete(usernameInput, usernameAutocompleteDropdown, searchGames);
+setupUsernameAutocomplete(compareInput, compareAutocompleteDropdown, loadCompareUser);
+
+// Restore last mode from localStorage
+const savedMode = localStorage.getItem(STORAGE_MODE);
+if (savedMode && modeFilter.querySelector(`option[value="${savedMode}"]`)) {
+    modeFilter.value = savedMode;
+}
+
+function getStoredUsernames() {
+    try {
+        const raw = localStorage.getItem(STORAGE_USERNAMES);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+function addUsernameToHistory(username) {
+    if (!username) return;
+    const key = username.trim().toLowerCase();
+    if (!key) return;
+    let usernames = getStoredUsernames();
+    usernames = usernames.filter(u => u.toLowerCase() !== key);
+    usernames.unshift(username.trim());
+    if (usernames.length > MAX_STORED_USERNAMES) usernames = usernames.slice(0, MAX_STORED_USERNAMES);
+    localStorage.setItem(STORAGE_USERNAMES, JSON.stringify(usernames));
+}
+
+function setupUsernameAutocomplete(inputEl, dropdownEl, onSelect) {
+    let selectedIndex = -1;
+    let matches = [];
+
+    dropdownEl.addEventListener("click", (e) => {
+        const item = e.target.closest(".autocomplete-item");
+        if (item) {
+            const idx = parseInt(item.dataset.index, 10);
+            if (matches[idx]) {
+                inputEl.value = matches[idx];
+                dropdownEl.classList.add("hidden");
+                onSelect();
+            }
+        }
+    });
+
+    function showDropdown(prefix) {
+        matches = getStoredUsernames().filter(u => 
+            u.toLowerCase().startsWith(prefix.toLowerCase())
+        ).slice(0, 10);
+        selectedIndex = -1;
+        if (matches.length === 0) {
+            dropdownEl.classList.add("hidden");
+            return;
+        }
+        dropdownEl.innerHTML = matches.map((u, i) =>
+            `<div class="autocomplete-item" data-index="${i}">${escapeHtml(u)}</div>`
+        ).join("");
+        dropdownEl.classList.remove("hidden");
+    }
+
+    function hideDropdown() {
+        setTimeout(() => dropdownEl.classList.add("hidden"), 150);
+    }
+
+    inputEl.addEventListener("input", () => {
+        const val = inputEl.value.trim();
+        if (val.length > 0) showDropdown(val);
+        else dropdownEl.classList.add("hidden");
+    });
+
+    inputEl.addEventListener("focus", () => {
+        const val = inputEl.value.trim();
+        if (val.length > 0) showDropdown(val);
+    });
+
+    inputEl.addEventListener("keydown", (e) => {
+        if (!dropdownEl.classList.contains("hidden")) {
+            const items = dropdownEl.querySelectorAll(".autocomplete-item");
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                items.forEach((it, i) => it.classList.toggle("selected", i === selectedIndex));
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, -1);
+                items.forEach((it, i) => it.classList.toggle("selected", i === selectedIndex));
+            } else if (e.key === "Enter" && selectedIndex >= 0 && matches[selectedIndex]) {
+                e.preventDefault();
+                inputEl.value = matches[selectedIndex];
+                dropdownEl.classList.add("hidden");
+                onSelect();
+            } else if (e.key === "Escape") {
+                dropdownEl.classList.add("hidden");
+            }
+        }
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!inputEl.contains(e.target) && !dropdownEl.contains(e.target)) hideDropdown();
+    });
+}
+
+function switchView(view) {
+    currentView = view;
+    
+    if (view === "list") {
+        listViewBtn.classList.add("active");
+        graphViewBtn.classList.remove("active");
+        listView.classList.remove("hidden");
+        graphView.classList.add("hidden");
+    } else {
+        listViewBtn.classList.remove("active");
+        graphViewBtn.classList.add("active");
+        listView.classList.add("hidden");
+        graphView.classList.remove("hidden");
+        renderGraph();
+    }
+}
+
+function getVariantAndTimeControl() {
+    const mode = modeFilter.value;
+    if (mode === "960_all") return { variant: "chess960", time_control: "all" };
+    if (mode === "960_15+10") return { variant: "chess960", time_control: "15+10" };
+    return { variant: "standard", time_control: mode };
+}
+
+function onModeChange() {
+    localStorage.setItem(STORAGE_MODE, modeFilter.value);
+    if (currentUsername) searchGames();
+    if (compareUsername) {
+        compareInput.value = compareUsername;
+        loadCompareUser();
+    }
+}
+
+async function searchGames() {
+    const username = usernameInput.value.trim();
+    if (!username) {
+        showError("Please enter a username");
+        return;
+    }
+
+    hideError();
+    showLoading("Fetching games from Lichess...");
+
+    // Reset state for new search
+    currentGames = [];
+    hasMoreGames = true;
+    oldestGameTime = null;
+    
+    // Clear compare data when main user changes
+    compareGames = [];
+    compareUsername = "";
+    compareHasMoreGames = false;
+    compareOldestGameTime = null;
+    compareInput.value = "";
+    updateLoadMoreCompareButton();
+
+    const { variant, time_control: timeControl } = getVariantAndTimeControl();
+
+    try {
+        const params = new URLSearchParams({
+            max: 50,
+            variant,
+            time_control: timeControl
+        });
+        
+        const response = await fetch(`${API_BASE}/api/games/${encodeURIComponent(username)}?${params}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch games");
+        }
+
+        currentGames = data.games;
+        currentUsername = data.username;
+        hasMoreGames = data.has_more;
+        oldestGameTime = data.oldest_time;
+        
+        addUsernameToHistory(username);
+        displayResults();
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadMoreGames() {
+    if (!hasMoreGames || !oldestGameTime) return;
+    
+    showLoading("Fetching more games...");
+
+    const { variant, time_control: timeControl } = getVariantAndTimeControl();
+
+    try {
+        const params = new URLSearchParams({
+            max: 50,
+            variant,
+            time_control: timeControl,
+            until: oldestGameTime
+        });
+        
+        const response = await fetch(`${API_BASE}/api/games/${encodeURIComponent(currentUsername)}?${params}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch games");
+        }
+
+        // Append new games
+        const newGames = data.games;
+        const startIndex = currentGames.length;
+        currentGames = [...currentGames, ...newGames];
+        hasMoreGames = data.has_more;
+        oldestGameTime = data.oldest_time;
+        
+        // Add new game cards
+        newGames.forEach((game, i) => {
+            const gameCard = createGameCard(game, startIndex + i);
+            gamesList.appendChild(gameCard);
+        });
+        
+        updateBatchButtonText();
+        updateLoadMoreButton();
+        
+        // Update graph if visible
+        if (currentView === "graph") {
+            renderGraph();
+        }
+        
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadCompareUser() {
+    const username = compareInput.value.trim();
+    if (!username) {
+        showError("Please enter a username to compare");
+        return;
+    }
+
+    hideError();
+    showLoading("Fetching games for comparison...");
+
+    // Reset state for new compare search
+    compareGames = [];
+    compareHasMoreGames = true;
+    compareOldestGameTime = null;
+
+    const { variant, time_control: timeControl } = getVariantAndTimeControl();
+
+    try {
+        const params = new URLSearchParams({
+            max: 50,
+            variant,
+            time_control: timeControl
+        });
+        
+        const response = await fetch(`${API_BASE}/api/games/${encodeURIComponent(username)}?${params}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch games");
+        }
+
+        compareGames = data.games;
+        compareUsername = data.username;
+        compareHasMoreGames = data.has_more;
+        compareOldestGameTime = data.oldest_time;
+        
+        addUsernameToHistory(username);
+        updateLoadMoreCompareButton();
+        renderGraph();
+    } catch (error) {
+        showError(error.message);
+        compareGames = [];
+        compareUsername = "";
+        compareHasMoreGames = false;
+        compareOldestGameTime = null;
+        updateLoadMoreCompareButton();
+        renderGraph();
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadMoreCompareGames() {
+    if (!compareHasMoreGames || !compareOldestGameTime || !compareUsername) return;
+    
+    showLoading("Fetching more games for comparison...");
+
+    const { variant, time_control: timeControl } = getVariantAndTimeControl();
+
+    try {
+        const params = new URLSearchParams({
+            max: 50,
+            variant,
+            time_control: timeControl,
+            until: compareOldestGameTime
+        });
+        
+        const response = await fetch(`${API_BASE}/api/games/${encodeURIComponent(compareUsername)}?${params}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch games");
+        }
+
+        // Append new games
+        compareGames = [...compareGames, ...data.games];
+        compareHasMoreGames = data.has_more;
+        compareOldestGameTime = data.oldest_time;
+        
+        updateLoadMoreCompareButton();
+        
+        // Update graph
+        if (currentView === "graph") {
+            renderGraph();
+        }
+        
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+function updateLoadMoreCompareButton() {
+    if (compareHasMoreGames && compareUsername) {
+        loadMoreCompareBtn.classList.remove("hidden");
+    } else {
+        loadMoreCompareBtn.classList.add("hidden");
+    }
+    updateBatchAnalyzeCompareButton();
+}
+
+function updateBatchAnalyzeCompareButton() {
+    const unanalyzed = compareGames.filter(g => g.cached_white_elo === undefined).length;
+    if (compareUsername && unanalyzed > 0) {
+        batchAnalyzeCompareBtn.classList.remove("hidden");
+        batchAnalyzeCompareBtn.textContent = `Analyze Next ${Math.min(unanalyzed, 10)}`;
+        batchAnalyzeCompareBtn.disabled = false;
+        batchAnalyzeCompareBtn.classList.remove("disabled");
+    } else if (compareUsername && unanalyzed === 0) {
+        batchAnalyzeCompareBtn.classList.remove("hidden");
+        batchAnalyzeCompareBtn.textContent = "All Analyzed ✓";
+        batchAnalyzeCompareBtn.disabled = true;
+        batchAnalyzeCompareBtn.classList.add("disabled");
+    } else {
+        batchAnalyzeCompareBtn.classList.add("hidden");
+    }
+}
+
+function displayResults() {
+    displayUsername.textContent = currentUsername;
+    resultsSection.classList.remove("hidden");
+    
+    displayGames();
+    updateBatchButtonText();
+    updateLoadMoreButton();
+    
+    if (currentView === "graph") {
+        renderGraph();
+    }
+}
+
+function updateLoadMoreButton() {
+    if (hasMoreGames) {
+        loadMoreBtn.classList.remove("hidden");
+    } else {
+        loadMoreBtn.classList.add("hidden");
+    }
+}
+
+function displayGames() {
+    gamesList.innerHTML = "";
+
+    if (currentGames.length === 0) {
+        gamesList.innerHTML = '<p class="no-games">No games found for this user</p>';
+        return;
+    }
+
+    currentGames.forEach((game, index) => {
+        const gameCard = createGameCard(game, index);
+        gamesList.appendChild(gameCard);
+    });
+}
+
+function createGameCard(game, index) {
+    const card = document.createElement("div");
+    card.className = "game-card";
+    card.id = `game-card-${index}`;
+    
+    const isAnalyzed = game.cached_white_elo !== undefined;
+    if (isAnalyzed) {
+        card.classList.add("analyzed");
+    } else {
+        card.classList.add("clickable");
+        card.onclick = () => analyzeGame(index);
+    }
+
+    const resultClass = getResultClass(game.result, game.white, currentUsername);
+    const timeControl = formatTimeControl(game.time_control);
+    
+    const isUserWhite = game.white.toLowerCase() === currentUsername.toLowerCase();
+    
+    let predictionHtml = "";
+    if (isAnalyzed) {
+        const userElo = isUserWhite ? game.cached_white_elo : game.cached_black_elo;
+        const opponentElo = isUserWhite ? game.cached_black_elo : game.cached_white_elo;
+        predictionHtml = `
+            <div class="prediction-display">
+                <span class="prediction-label">Estimated:</span>
+                <span class="user-elo">${userElo}</span>
+                <span class="elo-separator">vs</span>
+                <span class="opponent-elo">${opponentElo}</span>
+            </div>
+        `;
+    }
+
+    card.innerHTML = `
+        <div class="game-card-header">
+            <span class="game-date">${formatDate(game.date)}</span>
+            <span class="game-time-control">${timeControl}</span>
+        </div>
+        <div class="game-players">
+            <div class="player white-player">
+                <span class="piece">♔</span>
+                <span class="player-name">${escapeHtml(game.white)}</span>
+                <span class="player-elo">(${game.white_elo})</span>
+            </div>
+            <div class="vs">vs</div>
+            <div class="player black-player">
+                <span class="piece">♚</span>
+                <span class="player-name">${escapeHtml(game.black)}</span>
+                <span class="player-elo">(${game.black_elo})</span>
+            </div>
+        </div>
+        <div class="game-details">
+            <span class="game-opening">${escapeHtml(game.opening)}</span>
+            <span class="game-result ${resultClass}">${formatResult(game.result)}</span>
+        </div>
+        <div class="game-footer">
+            <span class="game-moves">${game.num_moves} moves</span>
+            <a href="https://lichess.org/${game.id}" target="_blank" class="lichess-link" onclick="event.stopPropagation()">View on Lichess ↗</a>
+            ${isAnalyzed ? '<span class="analyzed-badge">✓</span>' : '<span class="analyze-hint">Click to analyze</span>'}
+        </div>
+        ${predictionHtml}
+    `;
+
+    return card;
+}
+
+async function analyzeGame(index) {
+    const game = currentGames[index];
+    
+    if (game.cached_white_elo !== undefined) {
+        return;
+    }
+    
+    showLoading("Submitting to queue...");
+    
+    try {
+        // Submit job to queue
+        const response = await fetch(`${API_BASE}/api/analyze`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pgn: game.pgn, game_id: game.id })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Analysis failed");
+        }
+
+        // If already cached, update immediately
+        if (data.cached) {
+            game.cached_white_elo = data.result.white_elo;
+            game.cached_black_elo = data.result.black_elo;
+            updateGameCard(index);
+            hideLoading();
+            return;
+        }
+
+        // Poll for job completion
+        const result = await pollJobStatus(data.job_id);
+        
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        
+        game.cached_white_elo = result.white_elo;
+        game.cached_black_elo = result.black_elo;
+        
+        updateGameCard(index);
+        
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+async function pollJobStatus(jobId) {
+    while (true) {
+        const response = await fetch(`${API_BASE}/api/job/${jobId}`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            return { error: data.error || "Job not found" };
+        }
+        
+        if (data.status === "complete") {
+            return data.result;
+        }
+        
+        if (data.status === "error") {
+            return { error: data.error || "Analysis failed" };
+        }
+        
+        // Update loading message with queue position
+        if (data.status === "queued") {
+            showLoading(`In queue: position ${data.position}`);
+        } else if (data.status === "processing") {
+            showLoading("Analyzing game...");
+        }
+        
+        // Wait before polling again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+}
+
+function updateGameCard(index) {
+    const game = currentGames[index];
+    const oldCard = document.getElementById(`game-card-${index}`);
+    if (oldCard) {
+        const newCard = createGameCard(game, index);
+        oldCard.replaceWith(newCard);
+    }
+    
+    updateBatchButtonText();
+    
+    if (currentView === "graph") {
+        renderGraph();
+    }
+}
+
+async function batchAnalyze() {
+    // Find unanalyzed games (up to 10)
+    const unanalyzedIndices = [];
+    for (let i = 0; i < currentGames.length && unanalyzedIndices.length < 10; i++) {
+        if (currentGames[i].cached_white_elo === undefined) {
+            unanalyzedIndices.push(i);
+        }
+    }
+    
+    if (unanalyzedIndices.length === 0) {
+        return;
+    }
+    
+    const total = unanalyzedIndices.length;
+    let completed = 0;
+    
+    // Reset state
+    pendingJobIds = [];
+    batchCancelled = false;
+    
+    // Show progress bar, hide button
+    batchAnalyzeBtn.classList.add("hidden");
+    batchProgress.classList.remove("hidden");
+    updateBatchProgress(completed, total, "Submitting...");
+    
+    // Process one game at a time (fair queuing)
+    for (const index of unanalyzedIndices) {
+        // Check if cancelled
+        if (batchCancelled) {
+            break;
+        }
+        
+        const game = currentGames[index];
+        
+        try {
+            // Submit job
+            const response = await fetch(`${API_BASE}/api/analyze`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pgn: game.pgn, game_id: game.id })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                console.error(`Failed to submit game ${index}:`, data.error);
+                completed++;
+                updateBatchProgress(completed, total);
+                continue;
+            }
+
+            // If already cached, update immediately
+            if (data.cached) {
+                game.cached_white_elo = data.result.white_elo;
+                game.cached_black_elo = data.result.black_elo;
+                updateGameCard(index);
+                completed++;
+                updateBatchProgress(completed, total);
+                continue;
+            }
+
+            // Track job ID for potential cancellation
+            pendingJobIds.push(data.job_id);
+
+            // Poll for this job to complete before submitting next
+            const result = await pollBatchJobStatus(data.job_id, completed, total);
+            
+            // Remove from pending once complete
+            pendingJobIds = pendingJobIds.filter(id => id !== data.job_id);
+            
+            if (result && !result.error && !result.cancelled) {
+                game.cached_white_elo = result.white_elo;
+                game.cached_black_elo = result.black_elo;
+                updateGameCard(index);
+            }
+            
+        } catch (error) {
+            console.error(`Failed to analyze game ${index}:`, error);
+        }
+        
+        completed++;
+        updateBatchProgress(completed, total);
+    }
+    
+    // Hide progress bar, show button
+    batchProgress.classList.add("hidden");
+    batchAnalyzeBtn.classList.remove("hidden");
+    pendingJobIds = [];
+    batchCancelled = false;
+    updateBatchButtonText();
+    
+    // Update graph if in graph view
+    if (currentView === "graph") {
+        renderGraph();
+    }
+}
+
+async function batchAnalyzeCompare() {
+    const unanalyzedIndices = [];
+    for (let i = 0; i < compareGames.length && unanalyzedIndices.length < 10; i++) {
+        if (compareGames[i].cached_white_elo === undefined) {
+            unanalyzedIndices.push(i);
+        }
+    }
+    if (unanalyzedIndices.length === 0) return;
+
+    const total = unanalyzedIndices.length;
+    let completed = 0;
+    pendingJobIds = [];
+    batchCancelled = false;
+
+    batchAnalyzeCompareBtn.classList.add("hidden");
+    batchProgress.classList.remove("hidden");
+    batchProgress.style.marginTop = "15px";
+    updateBatchProgress(completed, total, "Submitting...");
+
+    for (const index of unanalyzedIndices) {
+        if (batchCancelled) break;
+        const game = compareGames[index];
+        try {
+            const response = await fetch(`${API_BASE}/api/analyze`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pgn: game.pgn, game_id: game.id })
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                completed++;
+                updateBatchProgress(completed, total);
+                continue;
+            }
+            if (data.cached) {
+                game.cached_white_elo = data.result.white_elo;
+                game.cached_black_elo = data.result.black_elo;
+                completed++;
+                updateBatchProgress(completed, total);
+                continue;
+            }
+            pendingJobIds.push(data.job_id);
+            const result = await pollBatchJobStatus(data.job_id, completed, total);
+            pendingJobIds = pendingJobIds.filter(id => id !== data.job_id);
+            if (result && !result.error && !result.cancelled) {
+                game.cached_white_elo = result.white_elo;
+                game.cached_black_elo = result.black_elo;
+            }
+        } catch (e) {
+            console.error("Compare batch error:", e);
+        }
+        completed++;
+        updateBatchProgress(completed, total);
+    }
+
+    batchProgress.classList.add("hidden");
+    batchProgress.style.marginTop = "";
+    pendingJobIds = [];
+    batchCancelled = false;
+    updateBatchAnalyzeCompareButton();
+    if (currentView === "graph") renderGraph();
+}
+
+async function pollBatchJobStatus(jobId, completed, total) {
+    while (true) {
+        // Check if cancelled
+        if (batchCancelled) {
+            return { cancelled: true };
+        }
+        
+        const response = await fetch(`${API_BASE}/api/job/${jobId}`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            return { error: data.error || "Job not found" };
+        }
+        
+        if (data.status === "complete") {
+            return data.result;
+        }
+        
+        if (data.status === "error") {
+            return { error: data.error || "Analysis failed" };
+        }
+        
+        if (data.status === "cancelled") {
+            return { cancelled: true };
+        }
+        
+        // Update progress with queue position
+        if (data.status === "queued") {
+            updateBatchProgress(completed, total, `Queue position: ${data.position}`);
+        } else if (data.status === "processing") {
+            updateBatchProgress(completed, total, "Analyzing...");
+        }
+        
+        // Wait before polling again
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+}
+
+async function cancelBatchAnalysis() {
+    batchCancelled = true;
+    updateBatchProgress(0, 0, "Cancelling...");
+    
+    // Cancel all pending jobs on server
+    for (const jobId of pendingJobIds) {
+        try {
+            await fetch(`${API_BASE}/api/job/${jobId}`, { method: "DELETE" });
+        } catch (error) {
+            console.error(`Failed to cancel job ${jobId}:`, error);
+        }
+    }
+    
+    pendingJobIds = [];
+}
+
+async function cancelPendingJobs() {
+    // Cancel all pending jobs (called on page unload)
+    for (const jobId of pendingJobIds) {
+        try {
+            // Use sendBeacon for reliability during page unload
+            navigator.sendBeacon(`${API_BASE}/api/job/${jobId}/cancel`);
+        } catch (error) {
+            // Fallback to fetch
+            fetch(`${API_BASE}/api/job/${jobId}`, { method: "DELETE" }).catch(() => {});
+        }
+    }
+    pendingJobIds = [];
+}
+
+// Cancel pending jobs when page is closed/reloaded
+window.addEventListener("beforeunload", () => {
+    if (pendingJobIds.length > 0) {
+        cancelPendingJobs();
+    }
+});
+
+function updateBatchProgress(completed, total, statusText = null) {
+    const percent = Math.round((completed / total) * 100);
+    
+    if (completed === total) {
+        progressText.textContent = `Completed ${total} games!`;
+    } else if (statusText) {
+        progressText.textContent = `Game ${completed + 1}/${total} - ${statusText}`;
+    } else {
+        progressText.textContent = `Game ${completed + 1}/${total}`;
+    }
+    
+    progressPercent.textContent = `${percent}%`;
+    progressFill.style.width = `${percent}%`;
+}
+
+function updateBatchButtonText() {
+    const unanalyzedCount = currentGames.filter(g => g.cached_white_elo === undefined).length;
+    if (unanalyzedCount === 0) {
+        batchAnalyzeBtn.textContent = "All Analyzed ✓";
+        batchAnalyzeBtn.disabled = true;
+        batchAnalyzeBtn.classList.add("disabled");
+    } else {
+        const toAnalyze = Math.min(unanalyzedCount, 10);
+        batchAnalyzeBtn.textContent = `Analyze Next ${toAnalyze}`;
+        batchAnalyzeBtn.disabled = false;
+        batchAnalyzeBtn.classList.remove("disabled");
+    }
+}
+
+// ============ GRAPH FUNCTIONS ============
+
+function prepareGraphData() {
+    // Reverse games so oldest is first (index 0 = oldest game)
+    const games = [...currentGames].reverse();
+    
+    const trueElos = [];
+    const estimatedElos = [];
+    
+    games.forEach((game, i) => {
+        const isUserWhite = game.white.toLowerCase() === currentUsername.toLowerCase();
+        
+        // True ELO from game data
+        const trueElo = parseInt(isUserWhite ? game.white_elo : game.black_elo) || null;
+        trueElos.push(trueElo);
+        
+        // Estimated ELO - if missing, use true elo instead of interpolating
+        if (game.cached_white_elo !== undefined) {
+            const estElo = isUserWhite ? game.cached_white_elo : game.cached_black_elo;
+            estimatedElos.push(estElo);
+        } else {
+            // Use true elo if estimated is not available
+            estimatedElos.push(trueElo);
+        }
+    });
+    
+    // Prepare compare user data if available
+    let compareTrueElos = [];
+    let compareEstimatedElos = [];
+    
+    if (compareGames.length > 0 && compareUsername) {
+        const compareGamesReversed = [...compareGames].reverse();
+        
+        compareGamesReversed.forEach((game, i) => {
+            const isUserWhite = game.white.toLowerCase() === compareUsername.toLowerCase();
+            
+            // True ELO from game data
+            const trueElo = parseInt(isUserWhite ? game.white_elo : game.black_elo) || null;
+            compareTrueElos.push(trueElo);
+            
+            // Estimated ELO - if missing, use true elo instead of interpolating
+            if (game.cached_white_elo !== undefined) {
+                const estElo = isUserWhite ? game.cached_white_elo : game.cached_black_elo;
+                compareEstimatedElos.push(estElo);
+            } else {
+                // Use true elo if estimated is not available
+                compareEstimatedElos.push(trueElo);
+            }
+        });
+    }
+    
+    // Match length to longest dataset
+    const maxLength = Math.max(games.length, compareGames.length);
+    
+    // Pad shorter arrays with null
+    while (trueElos.length < maxLength) {
+        trueElos.push(null);
+        estimatedElos.push(null);
+    }
+    while (compareTrueElos.length < maxLength) {
+        compareTrueElos.push(null);
+        compareEstimatedElos.push(null);
+    }
+    
+    // Calculate moving averages
+    const trueMA10 = movingAverage(trueElos, 10);
+    const estimatedMA10 = movingAverage(estimatedElos, 10);
+    const compareTrueMA10 = compareTrueElos.length > 0 ? movingAverage(compareTrueElos, 10) : [];
+    const compareEstimatedMA10 = compareEstimatedElos.length > 0 ? movingAverage(compareEstimatedElos, 10) : [];
+    
+    return {
+        labels: Array.from({ length: maxLength }, (_, i) => i + 1),
+        trueElos,
+        estimatedElos,
+        trueMA10,
+        estimatedMA10,
+        compareTrueElos,
+        compareEstimatedElos,
+        compareTrueMA10,
+        compareEstimatedMA10,
+        hasCompare: compareGames.length > 0 && compareUsername
+    };
+}
+
+function interpolateValues(values) {
+    const result = [...values];
+    
+    // Find first and last non-null indices
+    let firstValid = values.findIndex(v => v !== null);
+    let lastValid = values.length - 1 - [...values].reverse().findIndex(v => v !== null);
+    
+    if (firstValid === -1) {
+        // All values are null, return as-is
+        return result;
+    }
+    
+    // Fill leading nulls with first valid value
+    for (let i = 0; i < firstValid; i++) {
+        result[i] = values[firstValid];
+    }
+    
+    // Fill trailing nulls with last valid value
+    for (let i = lastValid + 1; i < values.length; i++) {
+        result[i] = values[lastValid];
+    }
+    
+    // Interpolate middle nulls
+    for (let i = firstValid; i <= lastValid; i++) {
+        if (result[i] === null) {
+            // Find previous and next valid values
+            let prevIdx = i - 1;
+            while (prevIdx >= 0 && values[prevIdx] === null) prevIdx--;
+            
+            let nextIdx = i + 1;
+            while (nextIdx < values.length && values[nextIdx] === null) nextIdx++;
+            
+            if (prevIdx >= 0 && nextIdx < values.length) {
+                // Linear interpolation
+                const prevVal = values[prevIdx];
+                const nextVal = values[nextIdx];
+                const ratio = (i - prevIdx) / (nextIdx - prevIdx);
+                result[i] = Math.round(prevVal + (nextVal - prevVal) * ratio);
+            }
+        }
+    }
+    
+    return result;
+}
+
+function movingAverage(values, window) {
+    const result = [];
+    
+    for (let i = 0; i < values.length; i++) {
+        const start = Math.max(0, i - window + 1);
+        const slice = values.slice(start, i + 1).filter(v => v !== null);
+        
+        if (slice.length > 0) {
+            result.push(Math.round(slice.reduce((a, b) => a + b, 0) / slice.length));
+        } else {
+            result.push(null);
+        }
+    }
+    
+    return result;
+}
+
+const htmlLegendPlugin = {
+    id: "htmlLegend",
+    afterUpdate(chart, _args, opts) {
+        const container = document.getElementById(opts.containerID);
+        if (!container) return;
+        let ul = container.querySelector("ul");
+        if (!ul) {
+            ul = document.createElement("ul");
+            container.appendChild(ul);
+        }
+        ul.innerHTML = "";
+        const items = chart.options.plugins.legend.labels.generateLabels(chart);
+        items.forEach((item) => {
+            const dataset = chart.data.datasets[item.datasetIndex];
+            const color = (dataset && dataset.borderColor) || item.strokeStyle || item.fillStyle;
+            const li = document.createElement("li");
+            li.classList.toggle("hidden-item", item.hidden);
+            li.style.cursor = "default";
+            const box = document.createElement("span");
+            box.className = "legend-box";
+            box.style.background = color;
+            box.style.borderColor = color;
+            box.style.borderWidth = "1px";
+            box.style.borderStyle = "solid";
+            const text = document.createTextNode(item.text);
+            li.appendChild(box);
+            li.appendChild(text);
+            ul.appendChild(li);
+        });
+    }
+};
+
+function renderGraph() {
+    const data = prepareGraphData();
+    const ctx = document.getElementById("elo-chart").getContext("2d");
+    
+    if (eloChart) {
+        eloChart.destroy();
+    }
+    
+    const showMaEst = toggleMaEstimated ? toggleMaEstimated.checked : true;
+    const showMaTrue = toggleMaTrue ? toggleMaTrue.checked : true;
+    const showRawEst = toggleRawEstimated ? toggleRawEstimated.checked : true;
+
+    const datasets = [
+        // Main user - blue/green: Estimated (green), True (blue), Raw (green)
+        {
+            label: `${currentUsername} - Estimated (MA10)`,
+            data: data.estimatedMA10,
+            borderColor: "#7cb342",
+            backgroundColor: "transparent",
+            borderWidth: 2,
+            borderDash: [],
+            pointRadius: 0,
+            tension: 0.3,
+            order: 0,
+            hidden: !showMaEst
+        },
+        {
+            label: `${currentUsername} - True (MA10)`,
+            data: data.trueMA10,
+            borderColor: "#5c9ece",
+            backgroundColor: "transparent",
+            borderWidth: 2,
+            borderDash: [10, 5],
+            pointRadius: 0,
+            tension: 0.3,
+            order: 1,
+            hidden: !showMaTrue
+        },
+        {
+            label: `${currentUsername} - Raw`,
+            data: data.estimatedElos,
+            borderColor: "#7cb342",
+            backgroundColor: "transparent",
+            borderWidth: 1,
+            borderDash: [2, 5],
+            pointRadius: 2,
+            pointBackgroundColor: "#7cb342",
+            tension: 0.1,
+            order: 2,
+            hidden: !showRawEst
+        }
+    ];
+
+    if (data.hasCompare) {
+        datasets.push(
+            // Compare user - orange/red: Estimated (orange), True (red), Raw (orange)
+            {
+                label: `${compareUsername} - Estimated (MA10)`,
+                data: data.compareEstimatedMA10,
+                borderColor: "#e67e22",
+                backgroundColor: "transparent",
+                borderWidth: 2,
+                borderDash: [],
+                pointRadius: 0,
+                tension: 0.3,
+                order: 3,
+                hidden: !showMaEst
+            },
+            {
+                label: `${compareUsername} - True (MA10)`,
+                data: data.compareTrueMA10,
+                borderColor: "#e74c3c",
+                backgroundColor: "transparent",
+                borderWidth: 2,
+                borderDash: [10, 5],
+                pointRadius: 0,
+                tension: 0.3,
+                order: 4,
+                hidden: !showMaTrue
+            },
+            {
+                label: `${compareUsername} - Raw`,
+                data: data.compareEstimatedElos,
+                borderColor: "#e67e22",
+                backgroundColor: "transparent",
+                borderWidth: 1,
+                borderDash: [2, 5],
+                pointRadius: 2,
+                pointBackgroundColor: "#e67e22",
+                tension: 0.1,
+                order: 5,
+                hidden: !showRawEst
+            }
+        );
+    }
+    
+    eloChart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: data.labels,
+            datasets: datasets
+        },
+        plugins: [htmlLegendPlugin],
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: "index"
+            },
+            plugins: {
+                htmlLegend: { containerID: "chart-legend-container" },
+                legend: {
+                    display: false,
+                    labels: {
+                        color: "#bababa",
+                        usePointStyle: true,
+                        padding: 15,
+                        font: { size: 12 }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => `Game ${items[0].label}`,
+                        label: (item) => {
+                            const value = item.raw;
+                            if (value === null) return null;
+                            return `${item.dataset.label}: ${value}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: "Game #",
+                        color: "#bababa"
+                    },
+                    ticks: { 
+                        color: "#bababa",
+                        maxTicksLimit: 20
+                    },
+                    grid: { color: "#404040" }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: "ELO Rating",
+                        color: "#bababa"
+                    },
+                    ticks: { color: "#bababa" },
+                    grid: { color: "#404040" }
+                }
+            }
+        }
+    });
+}
+
+// ============ UTILITY FUNCTIONS ============
+
+function showLoading(text) {
+    loadingText.textContent = text;
+    loadingOverlay.classList.remove("hidden");
+}
+
+function hideLoading() {
+    loadingOverlay.classList.add("hidden");
+}
+
+function showError(message) {
+    errorMessage.textContent = message;
+    errorMessage.classList.remove("hidden");
+}
+
+function hideError() {
+    errorMessage.classList.add("hidden");
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return "Unknown date";
+    const parts = dateStr.split(".");
+    if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
+}
+
+function formatTimeControl(tc) {
+    if (!tc || tc === "-") return "Unknown";
+    const parts = tc.split("+");
+    if (parts.length === 2) {
+        const mins = Math.floor(parseInt(parts[0]) / 60);
+        const inc = parts[1];
+        return `${mins}+${inc}`;
+    }
+    return tc;
+}
+
+function formatResult(result) {
+    switch (result) {
+        case "1-0": return "White wins";
+        case "0-1": return "Black wins";
+        case "1/2-1/2": return "Draw";
+        default: return result;
+    }
+}
+
+function getResultClass(result, white, username) {
+    const isWhite = white.toLowerCase() === username.toLowerCase();
+    if (result === "1-0") return isWhite ? "win" : "loss";
+    if (result === "0-1") return isWhite ? "loss" : "win";
+    return "draw";
+}
+
+function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ============ QUEUE STATUS ============
+
+async function updateQueueStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/api/queue/status`);
+        const data = await response.json();
+        
+        if (response.ok) {
+            const count = data.queue_length || 0;
+            queueCount.textContent = count;
+            
+            if (count > 0) {
+                queueIndicator.classList.remove("hidden");
+                queueIndicator.classList.add("active");
+            } else {
+                queueIndicator.classList.remove("active");
+                queueIndicator.classList.add("hidden");
+            }
+        }
+    } catch (error) {
+        // Silently fail - queue status is not critical
+    }
+}
+
+// Poll queue status every 3 seconds
+setInterval(updateQueueStatus, 3000);
+
+// Initial queue status check
+updateQueueStatus();

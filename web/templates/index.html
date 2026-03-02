@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elo Estimator</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons8-chess-office-m-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='icons8-chess-office-m-16.png') }}">
+    <link rel="apple-touch-icon" sizes="96x96" href="{{ url_for('static', filename='icons8-chess-office-m-96.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>♟ Elo Estimator</h1>
+            <p class="subtitle">AI-powered rating prediction based on your moves</p>
+        </header>
+
+        <section class="search-section">
+            <div class="search-box">
+                <div class="username-autocomplete" style="flex: 1;">
+                    <input type="text" id="username-input" name="player" placeholder="Enter Lichess username..." autocomplete="nope">
+                    <div id="username-autocomplete-dropdown" class="autocomplete-dropdown hidden"></div>
+                </div>
+                <button id="search-btn">Search</button>
+            </div>
+            <div class="filters">
+                <div class="filter-group">
+                    <label for="mode-filter">Mode</label>
+                    <select id="mode-filter">
+                        <option value="bullet">Bullet</option>
+                        <option value="blitz" selected>Blitz</option>
+                        <option value="rapid">Rapid</option>
+                        <option value="classical">Classical</option>
+                        <option value="960_all">960 All</option>
+                        <option value="960_15+10">960 15+10</option>
+                    </select>
+                </div>
+            </div>
+            <div id="error-message" class="error-message"></div>
+        </section>
+
+        <section id="results-section" class="results-section hidden">
+            <div class="results-header">
+                <h2>Recent Games for <span id="display-username"></span></h2>
+                <div class="header-controls">
+                    <button id="batch-analyze-btn" class="batch-btn">Analyze Next 10</button>
+                    <div class="view-toggle">
+                        <button id="list-view-btn" class="view-btn active">List</button>
+                        <button id="graph-view-btn" class="view-btn">Graph</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="batch-progress" class="batch-progress hidden">
+                <div class="progress-info">
+                    <span id="progress-text">Analyzing game 1/10...</span>
+                    <span id="progress-percent">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+                <button id="batch-cancel-btn" class="cancel-btn">Cancel</button>
+            </div>
+            
+            <div id="list-view" class="list-view">
+                <div id="games-list" class="games-list"></div>
+                <div class="load-more-container">
+                    <button id="load-more-btn" class="load-more-btn hidden">Load More (+50)</button>
+                </div>
+            </div>
+            
+            <div id="graph-view" class="graph-view hidden">
+                <div class="compare-section">
+                    <div class="compare-input-group">
+                        <label for="compare-input">Compare with:</label>
+                        <div class="username-autocomplete" style="flex: 1;">
+                            <input type="text" id="compare-input" name="compare-player" placeholder="Enter Lichess username..." autocomplete="nope">
+                            <div id="compare-autocomplete-dropdown" class="autocomplete-dropdown hidden"></div>
+                        </div>
+                        <button id="compare-btn">Load</button>
+                        <button id="batch-analyze-compare-btn" class="batch-btn hidden">Analyze Next 10</button>
+                    </div>
+                    <div class="load-more-compare-container">
+                        <button id="load-more-compare-btn" class="load-more-btn hidden">Load More (+50)</button>
+                    </div>
+                </div>
+                <div class="graph-container">
+                    <canvas id="elo-chart"></canvas>
+                </div>
+                <div id="chart-legend-container" class="chart-legend-container"></div>
+                <div class="graph-legend">
+                    <label class="legend-toggle">
+                        <input type="checkbox" id="toggle-ma-estimated" checked>
+                        <span class="legend-line solid"></span>
+                        <span>Estimated MA(10) (both players)</span>
+                    </label>
+                    <label class="legend-toggle">
+                        <input type="checkbox" id="toggle-ma-true" checked>
+                        <span class="legend-line dotted"></span>
+                        <span>True MA(10) (both players)</span>
+                    </label>
+                    <label class="legend-toggle">
+                        <input type="checkbox" id="toggle-raw-estimated">
+                        <span class="legend-line dotted"></span>
+                        <span>Estimated Raw (both players)</span>
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <div id="loading-overlay" class="loading-overlay hidden">
+            <div class="loading-content">
+                <div class="spinner"></div>
+                <p id="loading-text">Analyzing game with Stockfish...</p>
+                <p class="loading-subtitle">This may take 30-60 seconds</p>
+            </div>
+        </div>
+        
+        <div id="queue-indicator" class="queue-indicator hidden">
+            <span class="queue-icon">⏳</span>
+            <span id="queue-count">0</span> in queue
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <p>
+            <a target="_blank" href="https://github.com/pebll/elo-estimator">View on GitHub</a> |
+            Model based on <a target="_blank" href="https://github.com/HliasOuzounis/Ai-Guess-the-elo">Ai-Guess-the-elo</a> |
+            <a target="_blank" href="https://icons8.com/icon/36322/rook">Chess</a> icon by <a target="_blank" href="https://icons8.com">Icons8</a>
+        </p>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

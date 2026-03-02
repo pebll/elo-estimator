@@ -1,5 +1,5 @@
 # Math libraries for machine learning and more
-torch 
+# torch (installed separately in docker container because we want the cpu version)
 numpy
 # Chess library to load and parse chess games
 python-chess
@@ -7,6 +7,10 @@ python-chess
 tqdm
 matplotlib
 cairosvg
+
+# Web application
+flask
+requests
 
 # Local library to import helpful functions and the trained model
 -e .

@@ -8,3 +8,7 @@ datasets/*/*.pt
 /.vscode
 temp
 **/vis
+venv/
+*.db
+build/
+.ipynb_checkpoints/
