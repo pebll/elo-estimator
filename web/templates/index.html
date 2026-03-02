@@ -90,16 +90,20 @@
                 </div>
                 <div id="chart-legend-container" class="chart-legend-container"></div>
                 <div class="graph-legend">
-                    <span class="legend-item"><span class="legend-color green"></span> Estimated ELO</span>
-                    <span class="legend-item"><span class="legend-color blue"></span> True ELO</span>
-                    <span class="legend-divider"></span>
                     <label class="legend-toggle">
-                        <input type="checkbox" id="toggle-raw">
-                        <span class="legend-line dotted"></span> Raw
+                        <input type="checkbox" id="toggle-ma-estimated" checked>
+                        <span class="legend-line solid"></span>
+                        <span>Estimated MA(10) (both players)</span>
                     </label>
                     <label class="legend-toggle">
-                        <input type="checkbox" id="toggle-ma" checked>
-                        <span class="legend-line solid"></span> MA(10)
+                        <input type="checkbox" id="toggle-ma-true" checked>
+                        <span class="legend-line dotted"></span>
+                        <span>True MA(10) (both players)</span>
+                    </label>
+                    <label class="legend-toggle">
+                        <input type="checkbox" id="toggle-raw-estimated">
+                        <span class="legend-line dotted"></span>
+                        <span>Estimated Raw (both players)</span>
                     </label>
                 </div>
             </div>

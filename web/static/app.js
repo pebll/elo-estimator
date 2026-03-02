@@ -39,8 +39,14 @@ const loadMoreBtn = document.getElementById("load-more-btn");
 const queueIndicator = document.getElementById("queue-indicator");
 const queueCount = document.getElementById("queue-count");
 const batchCancelBtn = document.getElementById("batch-cancel-btn");
-const toggleRaw = document.getElementById("toggle-raw");
-const toggleMa = document.getElementById("toggle-ma");
+const toggleMaEstimated = document.getElementById("toggle-ma-estimated");
+const toggleMaTrue = document.getElementById("toggle-ma-true");
+const toggleRawEstimated = document.getElementById("toggle-raw-estimated");
+
+// Ensure default toggle state: MA on, Raw off
+if (toggleMaEstimated) toggleMaEstimated.checked = true;
+if (toggleMaTrue) toggleMaTrue.checked = true;
+if (toggleRawEstimated) toggleRawEstimated.checked = false;
 const compareInput = document.getElementById("compare-input");
 const compareBtn = document.getElementById("compare-btn");
 const loadMoreCompareBtn = document.getElementById("load-more-compare-btn");
@@ -58,8 +64,9 @@ searchBtn.addEventListener("click", searchGames);
 batchAnalyzeBtn.addEventListener("click", batchAnalyze);
 loadMoreBtn.addEventListener("click", loadMoreGames);
 batchCancelBtn.addEventListener("click", cancelBatchAnalysis);
-toggleRaw.addEventListener("change", updateChartVisibility);
-toggleMa.addEventListener("change", updateChartVisibility);
+if (toggleMaEstimated) toggleMaEstimated.addEventListener("change", updateChartVisibility);
+if (toggleMaTrue) toggleMaTrue.addEventListener("change", updateChartVisibility);
+if (toggleRawEstimated) toggleRawEstimated.addEventListener("change", updateChartVisibility);
 compareBtn.addEventListener("click", loadCompareUser);
 loadMoreCompareBtn.addEventListener("click", loadMoreCompareGames);
 compareInput.addEventListener("keypress", (e) => {
@@ -69,26 +76,39 @@ compareInput.addEventListener("keypress", (e) => {
 function updateChartVisibility() {
     if (!eloChart) return;
     
-    const showRaw = toggleRaw.checked;
-    const showMa = toggleMa.checked;
+    const showMaEst = toggleMaEstimated ? toggleMaEstimated.checked : true;
+    const showMaTrue = toggleMaTrue ? toggleMaTrue.checked : true;
+    const showRawEst = toggleRawEstimated ? toggleRawEstimated.checked : true;
     
     // Datasets order (for main user):
     // 0 = Estimated MA (prediction) - full line
-    // 1 = True MA - tirets
+    // 1 = True MA - dashed
     // 2 = Estimated raw - dotted
     // For compare user (if exists):
     // 3 = Compare Estimated MA - full line
-    // 4 = Compare True MA - tirets
+    // 4 = Compare True MA - dashed
     // 5 = Compare Estimated raw - dotted
     
-    eloChart.data.datasets[0].hidden = !showMa;   // Estimated ELO MA (prediction)
-    eloChart.data.datasets[1].hidden = !showMa;   // True ELO MA
-    eloChart.data.datasets[2].hidden = !showRaw;  // Estimated ELO raw
+    // Main user
+    if (eloChart.data.datasets[0]) {
+        eloChart.data.datasets[0].hidden = !showMaEst;   // Estimated ELO MA (prediction)
+    }
+    if (eloChart.data.datasets[1]) {
+        eloChart.data.datasets[1].hidden = !showMaTrue;  // True ELO MA
+    }
+    if (eloChart.data.datasets[2]) {
+        eloChart.data.datasets[2].hidden = !showRawEst;  // Estimated ELO raw
+    }
     
-    if (eloChart.data.datasets.length > 3) {
-        eloChart.data.datasets[3].hidden = !showMa;   // Compare Estimated ELO MA
-        eloChart.data.datasets[4].hidden = !showMa;   // Compare True ELO MA
-        eloChart.data.datasets[5].hidden = !showRaw;  // Compare Estimated ELO raw
+    // Compare user (if present)
+    if (eloChart.data.datasets[3]) {
+        eloChart.data.datasets[3].hidden = !showMaEst;   // Compare Estimated ELO MA
+    }
+    if (eloChart.data.datasets[4]) {
+        eloChart.data.datasets[4].hidden = !showMaTrue;  // Compare True ELO MA
+    }
+    if (eloChart.data.datasets[5]) {
+        eloChart.data.datasets[5].hidden = !showRawEst;  // Compare Estimated ELO raw
     }
     
     eloChart.update();
@@ -1077,22 +1097,20 @@ const htmlLegendPlugin = {
         ul.innerHTML = "";
         const items = chart.options.plugins.legend.labels.generateLabels(chart);
         items.forEach((item) => {
+            const dataset = chart.data.datasets[item.datasetIndex];
+            const color = (dataset && dataset.borderColor) || item.strokeStyle || item.fillStyle;
             const li = document.createElement("li");
             li.classList.toggle("hidden-item", item.hidden);
-            li.style.cursor = "pointer";
+            li.style.cursor = "default";
             const box = document.createElement("span");
             box.className = "legend-box";
-            box.style.background = item.fillStyle;
-            box.style.borderColor = item.strokeStyle || item.fillStyle;
+            box.style.background = color;
+            box.style.borderColor = color;
             box.style.borderWidth = "1px";
             box.style.borderStyle = "solid";
             const text = document.createTextNode(item.text);
             li.appendChild(box);
             li.appendChild(text);
-            li.onclick = () => {
-                chart.setDatasetVisibility(item.datasetIndex, !chart.isDatasetVisible(item.datasetIndex));
-                chart.update();
-            };
             ul.appendChild(li);
         });
     }
@@ -1106,8 +1124,9 @@ function renderGraph() {
         eloChart.destroy();
     }
     
-    const showRaw = toggleRaw.checked;
-    const showMa = toggleMa.checked;
+    const showMaEst = toggleMaEstimated ? toggleMaEstimated.checked : true;
+    const showMaTrue = toggleMaTrue ? toggleMaTrue.checked : true;
+    const showRawEst = toggleRawEstimated ? toggleRawEstimated.checked : true;
 
     const datasets = [
         // Main user - blue/green: Estimated (green), True (blue), Raw (green)
@@ -1121,7 +1140,7 @@ function renderGraph() {
             pointRadius: 0,
             tension: 0.3,
             order: 0,
-            hidden: !showMa
+            hidden: !showMaEst
         },
         {
             label: `${currentUsername} - True (MA10)`,
@@ -1133,7 +1152,7 @@ function renderGraph() {
             pointRadius: 0,
             tension: 0.3,
             order: 1,
-            hidden: !showMa
+            hidden: !showMaTrue
         },
         {
             label: `${currentUsername} - Raw`,
@@ -1146,7 +1165,7 @@ function renderGraph() {
             pointBackgroundColor: "#7cb342",
             tension: 0.1,
             order: 2,
-            hidden: !showRaw
+            hidden: !showRawEst
         }
     ];
 
@@ -1163,7 +1182,7 @@ function renderGraph() {
                 pointRadius: 0,
                 tension: 0.3,
                 order: 3,
-                hidden: !showMa
+                hidden: !showMaEst
             },
             {
                 label: `${compareUsername} - True (MA10)`,
@@ -1175,7 +1194,7 @@ function renderGraph() {
                 pointRadius: 0,
                 tension: 0.3,
                 order: 4,
-                hidden: !showMa
+                hidden: !showMaTrue
             },
             {
                 label: `${compareUsername} - Raw`,
@@ -1188,7 +1207,7 @@ function renderGraph() {
                 pointBackgroundColor: "#e67e22",
                 tension: 0.1,
                 order: 5,
-                hidden: !showRaw
+                hidden: !showRawEst
             }
         );
     }
