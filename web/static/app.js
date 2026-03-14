@@ -1004,9 +1004,9 @@ function prepareGraphData() {
     
     // Calculate moving averages
     const trueMA10 = movingAverage(trueElos, 10);
-    const estimatedMA10 = movingAverage(estimatedElos, 10);
+    const estimatedMA10 = movingAverage(estimatedElos, 10, trueElos);
     const compareTrueMA10 = compareTrueElos.length > 0 ? movingAverage(compareTrueElos, 10) : [];
-    const compareEstimatedMA10 = compareEstimatedElos.length > 0 ? movingAverage(compareEstimatedElos, 10) : [];
+    const compareEstimatedMA10 = compareEstimatedElos.length > 0 ? movingAverage(compareEstimatedElos, 10, compareTrueElos) : [];
     
     return {
         labels: Array.from({ length: maxLength }, (_, i) => i + 1),
@@ -1067,17 +1067,33 @@ function interpolateValues(values) {
     return result;
 }
 
-function movingAverage(values, window) {
+function movingAverage(values, window, fillWith = null) {
     const result = [];
     
     for (let i = 0; i < values.length; i++) {
         const start = Math.max(0, i - window + 1);
-        const slice = values.slice(start, i + 1).filter(v => v !== null);
+        const slice = values.slice(start, i + 1);
         
-        if (slice.length > 0) {
-            result.push(Math.round(slice.reduce((a, b) => a + b, 0) / slice.length));
+        // If fillWith is provided (for estimated MAE), fill missing slots with current true ELO
+        if (fillWith !== null && fillWith[i] !== null && fillWith[i] !== undefined) {
+            const availableCount = slice.filter(v => v !== null).length;
+            const missingCount = window - availableCount;
+            const currentTrueElo = fillWith[i];
+            
+            // Sum of available estimated values
+            const estimatedSum = slice.filter(v => v !== null).reduce((a, b) => a + b, 0);
+            // Fill missing slots with current true ELO
+            const filledSum = estimatedSum + (currentTrueElo * missingCount);
+            
+            result.push(Math.round(filledSum / window));
         } else {
-            result.push(null);
+            // Original behavior: only average available (non-null) values
+            const filteredSlice = slice.filter(v => v !== null);
+            if (filteredSlice.length > 0) {
+                result.push(Math.round(filteredSlice.reduce((a, b) => a + b, 0) / filteredSlice.length));
+            } else {
+                result.push(null);
+            }
         }
     }
     
