@@ -992,14 +992,14 @@ function prepareGraphData() {
     // Match length to longest dataset
     const maxLength = Math.max(games.length, compareGames.length);
     
-    // Pad shorter arrays with null
+    // Pad shorter arrays with null at the beginning (to align at the end)
     while (trueElos.length < maxLength) {
-        trueElos.push(null);
-        estimatedElos.push(null);
+        trueElos.unshift(null);
+        estimatedElos.unshift(null);
     }
     while (compareTrueElos.length < maxLength) {
-        compareTrueElos.push(null);
-        compareEstimatedElos.push(null);
+        compareTrueElos.unshift(null);
+        compareEstimatedElos.unshift(null);
     }
     
     // Calculate moving averages
