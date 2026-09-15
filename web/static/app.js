@@ -31,11 +31,13 @@ const graphViewBtn = document.getElementById("graph-view-btn");
 const listView = document.getElementById("list-view");
 const graphView = document.getElementById("graph-view");
 const batchAnalyzeBtn = document.getElementById("batch-analyze-btn");
+const batchAnalyze100Btn = document.getElementById("batch-analyze-100-btn");
 const batchProgress = document.getElementById("batch-progress");
 const progressText = document.getElementById("progress-text");
 const progressPercent = document.getElementById("progress-percent");
 const progressFill = document.getElementById("progress-fill");
 const loadMoreBtn = document.getElementById("load-more-btn");
+const loadMore250Btn = document.getElementById("load-more-250-btn");
 const queueIndicator = document.getElementById("queue-indicator");
 const queueCount = document.getElementById("queue-count");
 const batchCancelBtn = document.getElementById("batch-cancel-btn");
@@ -62,7 +64,9 @@ const MAX_STORED_USERNAMES = 50;
 // Event Listeners
 searchBtn.addEventListener("click", searchGames);
 batchAnalyzeBtn.addEventListener("click", batchAnalyze);
-loadMoreBtn.addEventListener("click", loadMoreGames);
+batchAnalyze100Btn.addEventListener("click", analyzeNext100);
+loadMoreBtn.addEventListener("click", () => loadMoreGames(50));
+loadMore250Btn.addEventListener("click", () => loadMoreGames(250));
 batchCancelBtn.addEventListener("click", cancelBatchAnalysis);
 if (toggleMaEstimated) toggleMaEstimated.addEventListener("change", updateChartVisibility);
 if (toggleMaTrue) toggleMaTrue.addEventListener("change", updateChartVisibility);
@@ -310,7 +314,7 @@ async function searchGames() {
     }
 }
 
-async function loadMoreGames() {
+async function loadMoreGames(count = 50) {
     if (!hasMoreGames || !oldestGameTime) return;
     
     showLoading("Fetching more games...");
@@ -319,7 +323,7 @@ async function loadMoreGames() {
 
     try {
         const params = new URLSearchParams({
-            max: 50,
+            max: count,
             variant,
             time_control: timeControl,
             until: oldestGameTime
@@ -495,8 +499,10 @@ function displayResults() {
 function updateLoadMoreButton() {
     if (hasMoreGames) {
         loadMoreBtn.classList.remove("hidden");
+        loadMore250Btn.classList.remove("hidden");
     } else {
         loadMoreBtn.classList.add("hidden");
+        loadMore250Btn.classList.add("hidden");
     }
 }
 
@@ -674,15 +680,43 @@ function updateGameCard(index) {
     }
 }
 
+// Simple client-side gate for the bulk "Analyze Next 100" action.
+// Not meant to be secure, just a speed bump.
+const BATCH_100_PASSWORD = "lucaistschlecht";
+
 async function batchAnalyze() {
-    // Find unanalyzed games (up to 10)
-    const unanalyzedIndices = [];
-    for (let i = 0; i < currentGames.length && unanalyzedIndices.length < 10; i++) {
+    await runBatchAnalysis(10);
+}
+
+async function analyzeNext100() {
+    const password = prompt("Enter password to analyze the next 100 games:");
+    if (password === null) return; // user cancelled the prompt
+    if (password !== BATCH_100_PASSWORD) {
+        showError("Incorrect password");
+        return;
+    }
+    await runBatchAnalysis(100);
+}
+
+function getUnanalyzedIndices(limit) {
+    const indices = [];
+    for (let i = 0; i < currentGames.length && indices.length < limit; i++) {
         if (currentGames[i].cached_white_elo === undefined) {
-            unanalyzedIndices.push(i);
+            indices.push(i);
         }
     }
-    
+    return indices;
+}
+
+async function runBatchAnalysis(limit) {
+    // Find unanalyzed games among those already loaded, fetching more
+    // pages from Lichess if we don't have enough loaded yet.
+    let unanalyzedIndices = getUnanalyzedIndices(limit);
+    while (unanalyzedIndices.length < limit && hasMoreGames) {
+        await loadMoreGames();
+        unanalyzedIndices = getUnanalyzedIndices(limit);
+    }
+
     if (unanalyzedIndices.length === 0) {
         return;
     }
@@ -694,8 +728,9 @@ async function batchAnalyze() {
     pendingJobIds = [];
     batchCancelled = false;
     
-    // Show progress bar, hide button
+    // Show progress bar, hide buttons
     batchAnalyzeBtn.classList.add("hidden");
+    batchAnalyze100Btn.classList.add("hidden");
     batchProgress.classList.remove("hidden");
     updateBatchProgress(completed, total, "Submitting...");
     
@@ -758,9 +793,10 @@ async function batchAnalyze() {
         updateBatchProgress(completed, total);
     }
     
-    // Hide progress bar, show button
+    // Hide progress bar, show buttons
     batchProgress.classList.add("hidden");
     batchAnalyzeBtn.classList.remove("hidden");
+    batchAnalyze100Btn.classList.remove("hidden");
     pendingJobIds = [];
     batchCancelled = false;
     updateBatchButtonText();
@@ -935,6 +971,18 @@ function updateBatchButtonText() {
         batchAnalyzeBtn.textContent = `Analyze Next ${toAnalyze}`;
         batchAnalyzeBtn.disabled = false;
         batchAnalyzeBtn.classList.remove("disabled");
+    }
+
+    // "Analyze Next 100" can also pull in more pages, so only disable it
+    // once nothing is unanalyzed AND there's nothing left to load either.
+    if (unanalyzedCount === 0 && !hasMoreGames) {
+        batchAnalyze100Btn.textContent = "All Analyzed ✓";
+        batchAnalyze100Btn.disabled = true;
+        batchAnalyze100Btn.classList.add("disabled");
+    } else {
+        batchAnalyze100Btn.textContent = "Analyze Next 100";
+        batchAnalyze100Btn.disabled = false;
+        batchAnalyze100Btn.classList.remove("disabled");
     }
 }
 
