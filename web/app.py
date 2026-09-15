@@ -84,6 +84,9 @@ def get_games(username):
     
     url = f"https://lichess.org/api/games/user/{username}"
     headers = {"Accept": "application/x-chess-pgn"}
+    lichess_token = os.environ.get("LICHESS_TOKEN")
+    if lichess_token:
+        headers["Authorization"] = f"Bearer {lichess_token}"
     params = {
         "max": fetch_max,
         "pgnInJson": False,
